@@ -1,6 +1,6 @@
 # DREAMDURIM Job Collector
 
-꿈드림 홈페이지와 분리된 수동 실행형 오픈소스 공고 수집기입니다. 원문을 자동으로 게시하지 않고 Git에서 검토할 JSON만 만듭니다.
+웹사이트와 독립적으로 사용할 수 있는 수동 실행형 오픈소스 공고 수집기입니다. 원문을 자동으로 배포하지 않고 사람이 검토할 JSON만 만듭니다.
 
 ## 지원 출처
 
@@ -27,12 +27,12 @@ npm run collect -- --source culture,worldjob
 npm run collect -- --source kotra --dry-run
 ```
 
-결과는 자동으로 홈페이지에 게시되지 않습니다.
+결과는 어떤 웹사이트에도 자동으로 게시되지 않습니다.
 
 - `collector/data/review.json`: 등록 후보와 사람이 확인해야 할 공고
 - `collector/data/last-run.json`: 최근 실행 결과 및 제외 사유
 - `collector/data/state.json`: 다음 월드잡 페이지 위치
-- `src/data/jobs.json`: 홈페이지에 실제로 공개되는 공고
+- `collector/data/approved.json`: 사람이 확인하고 승인한 공고 기록
 
 원문과 `review.json`을 확인한 뒤 다음처럼 승인합니다.
 
@@ -43,7 +43,7 @@ npm run check
 git diff
 ```
 
-승인은 `src/data/jobs.json`을 수정합니다. 변경을 커밋하고 PR을 병합하면 Vercel의 Git 연동이 정적 홈페이지를 배포합니다.
+승인은 `collector/data/approved.json`을 수정합니다. 필요한 서비스가 이 파일을 별도로 가져가 사용할 수 있으며, 수집기 자체는 외부 서비스로 전송하거나 게시하지 않습니다.
 
 ## 설계 원칙
 

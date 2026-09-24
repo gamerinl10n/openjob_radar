@@ -16,7 +16,7 @@ const defaults = {
   rejected: resolve(repoRoot, 'collector/data/rejected.json'),
   lastRun: resolve(repoRoot, 'collector/data/last-run.json'),
   state: resolve(repoRoot, 'collector/data/state.json'),
-  published: resolve(repoRoot, 'src/data/jobs.json'),
+  approved: resolve(repoRoot, 'collector/data/approved.json'),
 };
 
 const help = `DREAMDURIM 공개 공고 수집기
@@ -31,7 +31,7 @@ const help = `DREAMDURIM 공개 공고 수집기
   collector/data/review.json   수집 후 사람이 검토할 공고
   collector/data/last-run.json 최근 실행 보고서
   collector/data/state.json    월드잡 이어보기 위치
-  src/data/jobs.json           홈페이지에 공개되는 공고
+  collector/data/approved.json 사람이 승인한 공고 기록
 
 collect는 자동 게시하지 않습니다. approve를 실행하기 전에 review.json과 원문을 확인하세요.
 `;
@@ -46,7 +46,7 @@ const args = parseArgs({
     rejected: { type: 'string' },
     report: { type: 'string' },
     state: { type: 'string' },
-    published: { type: 'string' },
+    approved: { type: 'string' },
     'dry-run': { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
@@ -57,7 +57,7 @@ const paths = {
   rejected: resolve(args.values.rejected || defaults.rejected),
   lastRun: resolve(args.values.report || defaults.lastRun),
   state: resolve(args.values.state || defaults.state),
-  published: resolve(args.values.published || defaults.published),
+  approved: resolve(args.values.approved || defaults.approved),
 };
 
 const emptyReview = () => ({ schemaVersion: 1, updatedAt: null, ready: [], needsReview: [] });
@@ -73,9 +73,9 @@ async function collect() {
 
   const now = new Date().toISOString();
   const review = await readJson(paths.review, emptyReview());
-  const published = await readJson(paths.published, []);
+  const approved = await readJson(paths.approved, []);
   const state = await readJson(paths.state, { schemaVersion: 1, worldjob: { nextPage: 1 } });
-  const knownItems = [...published, ...(review.ready || []), ...(review.needsReview || [])];
+  const knownItems = [...approved, ...(review.ready || []), ...(review.needsReview || [])];
   const knownUrls = new Set(knownItems.map(sourceUrlOf).filter(Boolean));
   const worldjobKnown = new Set([...knownUrls].map(canonicalWorldjobUrl).filter(Boolean));
   const knownKotraUrls = [...knownUrls].map(canonicalKotraUrl).filter(Boolean);
@@ -85,7 +85,7 @@ async function collect() {
     knownKotraUrls,
   });
 
-  const existing = [...published, ...(review.ready || [])];
+  const existing = [...approved, ...(review.ready || [])];
   const normalized = runRadarPipeline(results.flatMap((result) => result.candidates || []), existing, { collectedAt: now });
   const newReady = normalized
     .filter(({ job, errors }) => !errors.length && job.status !== JOB_STATUSES.DUPLICATE)
@@ -152,11 +152,11 @@ async function approve() {
   const ids = requestedIds();
   if (!ids.length) throw new Error('--id에 승인할 공고 ID를 지정하세요.');
   const review = await readJson(paths.review, emptyReview());
-  const published = await readJson(paths.published, []);
+  const approvedRecords = await readJson(paths.approved, []);
   const selected = (review.ready || []).filter((item) => matchesId(item, ids));
   if (selected.length !== ids.length) throw new Error('검토 목록에서 승인할 ID를 모두 찾지 못했습니다.');
 
-  const knownUrls = new Set(published.map(sourceUrlOf));
+  const knownUrls = new Set(approvedRecords.map(sourceUrlOf));
   const approvedAt = new Date().toISOString();
   const approved = selected.map((job) => {
     const errors = validateJob(job);
@@ -167,11 +167,11 @@ async function approve() {
   });
   const selectedKeys = new Set(selected.map((item) => item.id));
   const nextReview = { ...review, updatedAt: approvedAt, ready: review.ready.filter((item) => !selectedKeys.has(item.id)) };
-  const nextPublished = [...published, ...approved].sort((a, b) =>
+  const nextApproved = [...approvedRecords, ...approved].sort((a, b) =>
     String(b.postedAt || b.verifiedAt || '').localeCompare(String(a.postedAt || a.verifiedAt || '')));
 
   await writeJson(paths.review, nextReview);
-  await writeJson(paths.published, nextPublished);
+  await writeJson(paths.approved, nextApproved);
   console.log(`${approved.length}건을 승인했습니다. Git diff로 확인한 뒤 커밋하세요.`);
 }
 
