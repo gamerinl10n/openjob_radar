@@ -50,6 +50,16 @@ git diff
 
 승인은 `data/approved.json`을 수정합니다. 필요한 서비스가 이 파일을 별도로 가져가 사용할 수 있으며, 수집기 자체는 외부 서비스로 전송하거나 게시하지 않습니다.
 
+## GitHub에서 버튼으로 실행
+
+로컬 설치 없이 저장소의 [Actions](https://github.com/gamerinl10n/openjob_radar/actions/workflows/collect.yml)에서 **Run workflow**를 누르고 출처를 선택할 수 있습니다.
+
+- 예약 실행 없이 버튼을 누른 경우에만 수집합니다.
+- 저장소 파일과 웹사이트는 변경하지 않습니다.
+- 실행 요약은 GitHub 화면에서 확인할 수 있습니다.
+- `review.json`, `last-run.json`, `state.json`은 실행 결과의 Artifacts에서 14일 동안 내려받을 수 있습니다.
+- 일부 출처가 실패해도 진단 파일을 먼저 업로드한 뒤 실행을 실패로 표시합니다.
+
 ## 설계 원칙
 
 - 모든 실행은 사람이 명령을 입력했을 때만 시작합니다.
