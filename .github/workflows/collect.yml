@@ -1,0 +1,78 @@
+name: Collect jobs manually
+
+run-name: Collect ${{ inputs.source }} · #${{ github.run_number }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 수집할 공개 출처
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - kotra
+          - worldjob
+          - culture
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Prepare isolated output
+        id: output
+        shell: bash
+        run: |
+          output_dir="$RUNNER_TEMP/openjob-radar"
+          mkdir -p "$output_dir/data"
+          cp -R data/. "$output_dir/data/"
+          echo "directory=$output_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Collect public postings
+        id: collection
+        continue-on-error: true
+        shell: bash
+        env:
+          SOURCE: ${{ inputs.source }}
+          OPENJOB_RADAR_HOME: ${{ steps.output.outputs.directory }}
+        run: |
+          args=()
+          if [ "$SOURCE" != "all" ]; then
+            args+=(--source "$SOURCE")
+          fi
+          node ./src/cli.js collect "${args[@]}"
+
+      - name: Write run summary
+        if: always()
+        env:
+          OUTPUT_DIRECTORY: ${{ steps.output.outputs.directory }}
+        run: node ./scripts/githubSummary.js "$OUTPUT_DIRECTORY/data/last-run.json" "$OUTPUT_DIRECTORY/data/review.json"
+
+      - name: Upload review files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openjob-radar-${{ inputs.source }}-${{ github.run_number }}
+          path: |
+            ${{ steps.output.outputs.directory }}/data/review.json
+            ${{ steps.output.outputs.directory }}/data/last-run.json
+            ${{ steps.output.outputs.directory }}/data/state.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report collection failure
+        if: steps.collection.outcome == 'failure'
+        run: exit 1
