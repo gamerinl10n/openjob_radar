@@ -1,0 +1,44 @@
+{
+  "name": "openjob-radar",
+  "version": "0.1.0",
+  "description": "Manual, review-first collector for public job postings",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gamerinl10n/openjob_radar.git"
+  },
+  "homepage": "https://github.com/gamerinl10n/openjob_radar#readme",
+  "bugs": {
+    "url": "https://github.com/gamerinl10n/openjob_radar/issues"
+  },
+  "keywords": [
+    "job-postings",
+    "collector",
+    "review-first",
+    "open-data"
+  ],
+  "bin": {
+    "openjob-radar": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "collect": "node ./src/cli.js collect",
+    "list": "node ./src/cli.js list",
+    "approve": "node ./src/cli.js approve",
+    "reject": "node ./src/cli.js reject",
+    "test": "node --test",
+    "check": "node --check ./src/cli.js && node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.3.289"
+  }
+}
