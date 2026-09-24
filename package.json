@@ -1,0 +1,26 @@
+{
+  "name": "@dreamdurim/job-collector",
+  "version": "0.1.0",
+  "description": "Manual, review-first job posting collector for DREAMDURIM",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "dreamdurim-collect": "./src/cli.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "collect": "node ./src/cli.js collect",
+    "list": "node ./src/cli.js list",
+    "check": "node --check ./src/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.3.289"
+  }
+}
