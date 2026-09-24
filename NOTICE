@@ -1,0 +1,13 @@
+OpenJob Radar
+Copyright (c) 2026 gamerinl10n and OpenJob Radar contributors
+
+This project originated from the manual public-job collection code developed
+for DREAMDURIM:
+https://github.com/gamerinl10n/dreamdurim
+
+The collector was separated into this repository with its relevant Git history
+preserved. The source code is licensed under the MIT License in LICENSE.
+
+Names, trademarks, job postings, documents, and images from collected source
+websites remain the property of their respective owners. OpenJob Radar does not
+grant rights to third-party content.
