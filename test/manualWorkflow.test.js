@@ -7,6 +7,7 @@ import { buildGitHubSummary } from '../scripts/githubSummary.js';
 test('manual workflow never schedules, commits or publishes collected data', async () => {
   const workflow = await readFile(new URL('../.github/workflows/collect.yml', import.meta.url), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /^run-name: "Collect .*#\$\{\{ github\.run_number \}\}"$/m);
   assert.doesNotMatch(workflow, /^\s+(?:schedule|push):/m);
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /actions\/upload-artifact@v4/);

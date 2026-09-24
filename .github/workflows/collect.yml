@@ -1,6 +1,6 @@
 name: Collect jobs manually
 
-run-name: Collect ${{ inputs.source }} · #${{ github.run_number }}
+run-name: "Collect ${{ inputs.source }} · #${{ github.run_number }}"
 
 on:
   workflow_dispatch:
