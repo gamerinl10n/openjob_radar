@@ -20,7 +20,7 @@ const detail = (id, body) => `<form id="detailFrm"><input name="nttSeq" value="$
   <div class="conM_txt">${body}</div>`;
 const readyBody = '<p>담당 업무: 해외사업 지원</p><p>지원 자격: 관련 업무 가능자</p><p>근무지: 서울</p><p>접수 마감일: 2099.12.31</p>';
 
-test('every public source remains button-only, and KOTRA URLs stay official', () => {
+test('every public source remains manual-only, and KOTRA URLs stay official', () => {
   assert.ok(COLLECTION_SOURCES.every((item) => item.mode === 'manual'));
   assert.equal(canonicalKotraUrl('https://kotra.or.kr/subList/20000005817?pmode=detail&nttSeq=29423'), url('29423'));
   assert.equal(canonicalKotraUrl('https://evil.example/kp/subList/20000005817?nttSeq=29423&pmode=detail'), '');

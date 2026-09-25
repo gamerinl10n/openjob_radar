@@ -1,6 +1,5 @@
 # OpenJob Radar
 
-[![CI](https://github.com/gamerinl10n/openjob_radar/actions/workflows/check.yml/badge.svg)](https://github.com/gamerinl10n/openjob_radar/actions/workflows/check.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 공개 채용 공고를 사람이 요청했을 때만 수집하는 review-first 오픈소스 도구입니다. 데이터베이스나 자동 게시 기능 없이 검토 가능한 JSON을 만듭니다.
@@ -15,9 +14,11 @@
 
 각 출처의 공개 페이지에만 접근합니다. 로그인 우회, 브라우저 자동화, JavaScript 실행은 하지 않습니다.
 
-## 사용법
+## 로컬 사용법
 
 Node.js 22 이상과 npm을 사용합니다.
+
+이 프로젝트는 GitHub Actions나 예약 실행을 제공하지 않습니다. 수집은 아래 로컬 명령을 직접 실행한 경우에만 시작합니다.
 
 ```bash
 npm ci
@@ -50,19 +51,9 @@ git diff
 
 승인은 `data/approved.json`을 수정합니다. 필요한 서비스가 이 파일을 별도로 가져가 사용할 수 있으며, 수집기 자체는 외부 서비스로 전송하거나 게시하지 않습니다.
 
-## GitHub에서 버튼으로 실행
-
-로컬 설치 없이 저장소의 [Actions](https://github.com/gamerinl10n/openjob_radar/actions/workflows/collect.yml)에서 **Run workflow**를 누르고 출처를 선택할 수 있습니다.
-
-- 예약 실행 없이 버튼을 누른 경우에만 수집합니다.
-- 저장소 파일과 웹사이트는 변경하지 않습니다.
-- 실행 요약은 GitHub 화면에서 확인할 수 있습니다.
-- `review.json`, `last-run.json`, `state.json`은 실행 결과의 Artifacts에서 14일 동안 내려받을 수 있습니다.
-- 일부 출처가 실패해도 진단 파일을 먼저 업로드한 뒤 실행을 실패로 표시합니다.
-
 ## 설계 원칙
 
-- 모든 실행은 사람이 명령을 입력했을 때만 시작합니다.
+- 모든 실행은 사용자가 로컬 명령을 입력했을 때만 시작합니다.
 - 공고는 자동 게시하지 않습니다.
 - 원문 URL로 중복을 제거합니다.
 - 이미지·HWP·조건 누락 공고는 확인 필요 목록으로 보냅니다.
