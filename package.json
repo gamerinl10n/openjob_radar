@@ -1,6 +1,6 @@
 {
   "name": "openjob-radar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Manual, review-first collector for public job postings",
   "type": "module",
   "license": "MIT",
@@ -28,12 +28,13 @@
     "NOTICE"
   ],
   "scripts": {
+    "app": "node ./src/app.js",
     "collect": "node ./src/cli.js collect",
     "list": "node ./src/cli.js list",
     "approve": "node ./src/cli.js approve",
     "reject": "node ./src/cli.js reject",
     "test": "node --test",
-    "check": "node --check ./src/cli.js && node --test"
+    "check": "node --check ./src/cli.js && node --check ./src/app.js && node --check ./src/appServer.js && node --test"
   },
   "engines": {
     "node": ">=22"
