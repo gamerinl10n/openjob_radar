@@ -1,0 +1,26 @@
+name: Windows desktop build
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, 'feat/windows-desktop-review']
+  pull_request:
+    branches: [master]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run dist:win -- --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenJob-Radar-Windows
+          path: dist/*Setup.exe
+          if-no-files-found: error
