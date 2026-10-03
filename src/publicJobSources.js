@@ -298,7 +298,7 @@ export async function collectPublicJobCandidates(sourceIds = SOURCES.map((s) => 
         const batch = listing.slice(offset, offset + 10);
         const details = await Promise.allSettled(batch.map(async (item) => {
           const job = parsePublicDetail(await limitedFetchHtml(item.sourceUrl), item);
-          return enrichPublicDetail(job, { fetcher, runRequest, onRetry, skipPdf: Date.now() + 14000 > stopAt });
+          return enrichPublicDetail(job, { fetcher, runRequest, onRetry, skipPdf: Date.now() + (process.platform === 'win32' ? 23000 : 14000) > stopAt });
         }));
         details.forEach((r, index) => {
           const item = batch[index];

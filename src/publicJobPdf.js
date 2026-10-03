@@ -3,7 +3,7 @@ import { httpResponseError, withTransientRetry } from './fetchRetry.js';
 
 export const MAX_PDF_BYTES = 6 * 1024 * 1024;
 const origin = 'https://www.korean-culture.org';
-export function extractPdfText(bytes, { timeoutMs = 6000 } = {}) {
+export function extractPdfText(bytes, { timeoutMs = process.platform === 'win32' ? 15000 : 6000 } = {}) {
   if (bytes.length > MAX_PDF_BYTES || Buffer.from(bytes).subarray(0, 5).toString() !== '%PDF-')
     return Promise.reject(new Error('PDF 형식 또는 파일 크기(6MB)를 확인해 주세요.'));
   return new Promise((resolve, reject) => {

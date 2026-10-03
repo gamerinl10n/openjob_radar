@@ -65,6 +65,7 @@ export const readRadarStatus = async (workspaceRoot) => {
 
   return {
     review,
+    approved, rejected,
     approvedCount: approved.length,
     rejectedCount: rejected.length,
     lastRun,
@@ -74,19 +75,23 @@ export const readRadarStatus = async (workspaceRoot) => {
 export const runCli = async (workspaceRoot, args) => {
   const result = await execFileAsync(process.execPath, [cliPath, ...args], {
     cwd: workspaceRoot,
-    env: { ...process.env, OPENJOB_RADAR_HOME: workspaceRoot },
+    env: { ...process.env, OPENJOB_RADAR_HOME: workspaceRoot, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },
     timeout: 10 * 60 * 1000,
     maxBuffer: 2 * 1024 * 1024,
   });
   return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
 };
 
-export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runCli } = {}) => {
+export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runCli, authToken = null } = {}) => {
   const root = resolve(workspaceRoot);
   let operation = null;
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     try {
+      const expectedHost = `127.0.0.1:${server.address()?.port}`;
+      if (authToken && (request.headers['x-radar-token'] !== authToken || request.headers.host !== expectedHost)) {
+        json(response, 403, { error: '앱에서만 접근할 수 있습니다.' }); return;
+      }
       const url = new URL(request.url || '/', 'http://localhost');
       if (request.method === 'GET' && url.pathname === '/api/status') {
         json(response, 200, { ...(await readRadarStatus(root)), operation });
@@ -104,6 +109,7 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
         }
 
         const body = await bodyOf(request);
+        if (operation) { json(response, 409, { error: '다른 작업이 실행 중입니다.' }); return; }
         let args;
         let label;
         if (url.pathname === '/api/collect') {
@@ -114,6 +120,9 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
           args = ['collect', '--source', sources.join(',')];
           if (body.dryRun === true) args.push('--dry-run');
           label = '공고 수집';
+        } else if (url.pathname === '/api/edit') {
+          args = ['edit', '--id', idsOf(body.ids).join(','), '--patch', JSON.stringify(body.patch || {})];
+          label = '수정';
         } else if (url.pathname === '/api/approve') {
           args = ['approve', '--id', idsOf(body.ids).join(',')];
           label = '승인';
@@ -157,4 +166,6 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
       });
     }
   });
+  server.radarBusy = () => Boolean(operation);
+  return server;
 };

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 
 import { collectPublicJobCandidates, SOURCES } from './publicJobSources.js';
 import { canonicalKotraUrl } from './kotra.js';
 import { canonicalWorldjobUrl } from './worldjob.js';
 import { JOB_STATUSES, validateJob } from './contract.js';
 import { runRadarPipeline } from './runPipeline.js';
-import { pendingId, readJson, sourceUrlOf, writeJson } from './storage.js';
+import { pendingId, readJson, sourceUrlOf, writeJson, acquireLock, recoverTransaction, commitTransaction } from './storage.js';
 
 const workspaceRoot = resolve(process.env.OPENJOB_RADAR_HOME || process.cwd());
 const defaults = {
@@ -41,6 +41,7 @@ const args = parseArgs({
   allowPositionals: true,
   options: {
     source: { type: 'string' },
+    patch: { type: 'string' },
     id: { type: 'string' },
     review: { type: 'string' },
     rejected: { type: 'string' },
@@ -75,7 +76,9 @@ async function collect() {
   const review = await readJson(paths.review, emptyReview());
   const approved = await readJson(paths.approved, []);
   const state = await readJson(paths.state, { schemaVersion: 1, worldjob: { nextPage: 1 } });
-  const knownItems = [...approved, ...(review.ready || []), ...(review.needsReview || [])];
+  const rejected = await readJson(paths.rejected, []);
+  const rejectedUrls = new Set(rejected.map(sourceUrlOf));
+  const knownItems = [...rejected, ...approved, ...(review.ready || []), ...(review.needsReview || [])];
   const knownUrls = new Set(knownItems.map(sourceUrlOf).filter(Boolean));
   const worldjobKnown = new Set([...knownUrls].map(canonicalWorldjobUrl).filter(Boolean));
   const knownKotraUrls = [...knownUrls].map(canonicalKotraUrl).filter(Boolean);
@@ -88,7 +91,7 @@ async function collect() {
   const existing = [...approved, ...(review.ready || [])];
   const normalized = runRadarPipeline(results.flatMap((result) => result.candidates || []), existing, { collectedAt: now });
   const newReady = normalized
-    .filter(({ job, errors }) => !errors.length && job.status !== JOB_STATUSES.DUPLICATE)
+    .filter(({ job, errors }) => !rejectedUrls.has(sourceUrlOf(job)) && !errors.length && job.status !== JOB_STATUSES.DUPLICATE)
     .map(({ job }) => job);
   const invalid = normalized.filter(({ errors }) => errors.length);
   const ready = uniqueBy([...(review.ready || []), ...newReady], sourceUrlOf);
@@ -105,6 +108,7 @@ async function collect() {
   })));
   const previousPending = new Map((review.needsReview || []).map((item) => [item.url, item]));
   for (const item of pending) {
+    if (rejectedUrls.has(item.url)) continue;
     const previous = previousPending.get(item.url);
     previousPending.set(item.url, previous ? { ...previous, ...item, firstSeenAt: previous.firstSeenAt || now } : item);
   }
@@ -113,7 +117,7 @@ async function collect() {
     schemaVersion: 1,
     updatedAt: now,
     ready,
-    needsReview: [...previousPending.values()],
+    needsReview: [...previousPending.values()].filter((item) => !ready.some((job) => sourceUrlOf(job) === item.url)),
   };
   const report = {
     schemaVersion: 1,
@@ -135,9 +139,7 @@ async function collect() {
   };
 
   if (!args.values['dry-run']) {
-    await writeJson(paths.review, nextReview);
-    await writeJson(paths.lastRun, report);
-    await writeJson(paths.state, nextState);
+    await commitTransaction(journal, [[paths.review, nextReview], [paths.lastRun, report], [paths.state, nextState]]);
   }
 
   for (const result of results) {
@@ -170,8 +172,7 @@ async function approve() {
   const nextApproved = [...approvedRecords, ...approved].sort((a, b) =>
     String(b.postedAt || b.verifiedAt || '').localeCompare(String(a.postedAt || a.verifiedAt || '')));
 
-  await writeJson(paths.review, nextReview);
-  await writeJson(paths.approved, nextApproved);
+  await commitTransaction(journal, [[paths.approved, nextApproved], [paths.review, nextReview]]);
   console.log(`${approved.length}건을 승인했습니다. Git diff로 확인한 뒤 커밋하세요.`);
 }
 
@@ -188,13 +189,12 @@ async function reject() {
   const selectedKeys = new Set(selected.map((item) => item.id));
   const rejectedAt = new Date().toISOString();
   const rejected = await readJson(paths.rejected, []);
-  await writeJson(paths.rejected, [...rejected, ...selected.map((item) => ({ ...item, rejectedAt }))]);
-  await writeJson(paths.review, {
+  await commitTransaction(journal, [[paths.rejected, [...rejected, ...selected.map((item) => ({ ...item, rejectedAt }))]], [paths.review, {
     ...review,
     updatedAt: rejectedAt,
     ready: review.ready.filter((item) => !selectedKeys.has(item.id)),
     needsReview: review.needsReview.filter((item) => !selectedKeys.has(item.id)),
-  });
+  }]]);
   console.log(`${selected.length}건을 공개 제외 기록으로 이동했습니다.`);
 }
 
@@ -205,9 +205,47 @@ async function list() {
   for (const item of review.needsReview) console.log(`[needs-review] ${item.id} · ${item.title}`);
 }
 
+async function edit() {
+  const ids = requestedIds();
+  if (ids.length !== 1) throw new Error('수정할 공고를 하나 선택하세요.');
+  const patch = JSON.parse(args.values.patch || '{}');
+  const review = await readJson(paths.review, emptyReview());
+  const item = [...review.ready, ...review.needsReview].find((job) => matchesId(job, ids));
+  if (!item) throw new Error('공고를 찾지 못했습니다.');
+  const text = (key) => String(patch[key] ?? '').trim().slice(0, 10000);
+  if (!text('title') || !text('company') || !text('requirements') || !text('responsibilities')) {
+    throw new Error('제목, 회사, 업무, 자격을 입력하세요.');
+  }
+  const { normalizeCandidate } = await import('./normalizeCandidate.js');
+  const job = normalizeCandidate({
+    ...item, title: text('title'), company: text('company'),
+    source: item.source || { name: SOURCES.find((source) => source.id === item.sourceId)?.name || item.sourceId || '수동 검토', url: item.url },
+    location: { ...item.location, country: text('country'), city: text('city') },
+    deadline: text('deadline'), summary: text('summary'),
+    responsibilities: text('responsibilities').split('\n').filter(Boolean),
+    requirements: text('requirements').split('\n').filter(Boolean),
+  });
+  if (item.radarId) { job.id = item.id; job.radarId = item.radarId; job.slug = item.slug; }
+  const errors = validateJob(job);
+  if (errors.length) throw new Error('필수 정보 확인: ' + errors.join(', '));
+  await commitTransaction(journal, [[paths.review, {
+    ...review, updatedAt: new Date().toISOString(),
+    ready: [...review.ready.filter((old) => old.id !== item.id && sourceUrlOf(old) !== sourceUrlOf(job)), job],
+    needsReview: review.needsReview.filter((old) => old.id !== item.id && sourceUrlOf(old) !== sourceUrlOf(job)),
+  }]]);
+  console.log('수정했습니다. 등록 검토에서 내용을 확인하고 승인하세요.');
+}
+const journal = resolve(dirname(paths.review), 'transaction.json');
+let release;
+
 try {
+  if (['collect', 'approve', 'reject', 'edit', 'list'].includes(command)) {
+    release = await acquireLock(resolve(dirname(paths.review), '.operation.lock'));
+    await recoverTransaction(journal);
+  }
   if (args.values.help || command === 'help') console.log(help);
   else if (command === 'collect') await collect();
+  else if (command === 'edit') await edit();
   else if (command === 'approve') await approve();
   else if (command === 'reject') await reject();
   else if (command === 'list') await list();
@@ -216,3 +254,5 @@ try {
   console.error(error.message);
   process.exitCode = 1;
 }
+
+finally { if (release) await release(); }

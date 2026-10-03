@@ -1,6 +1,6 @@
 {
   "name": "openjob-radar",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Manual, review-first collector for public job postings",
   "type": "module",
   "license": "MIT",
@@ -34,12 +34,55 @@
     "approve": "node ./src/cli.js approve",
     "reject": "node ./src/cli.js reject",
     "test": "node --test",
-    "check": "node --check ./src/cli.js && node --check ./src/app.js && node --check ./src/appServer.js && node --test"
+    "check": "node --check ./src/cli.js && node --check ./src/app.js && node --check ./src/appServer.js && node --test",
+    "desktop": "electron .",
+    "dist:win": "electron-builder --win nsis --x64",
+    "pack": "electron-builder --dir"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
     "pdfjs-dist": "6.3.289"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "playwright-core": "1.63.0"
+  },
+  "main": "desktop/main.js",
+  "author": "gamerinl10n",
+  "build": {
+    "appId": "me.forgamersbygamers.openjobradar",
+    "productName": "OpenJob Radar",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "desktop/**/*",
+      "package.json",
+      "LICENSE",
+      "NOTICE"
+    ],
+    "asar": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "OpenJob-Radar-${version}-Setup.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }
