@@ -63,3 +63,25 @@ test('desktop API requires its token and rejects another host', async () => {
     assert.equal(status, 403);
   } finally { await new Promise((resolve) => server.close(resolve)); }
 });
+
+test('rejected ready and pending notices stay excluded on the next collection', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'radar-recollect-'));
+  const mock = join(root, 'fetch.mjs');
+  const { writeFile } = await import('node:fs/promises');
+  const { pathToFileURL } = await import('node:url');
+  await writeFile(mock, `globalThis.fetch = async (url) => new Response(url.includes('/view.do')
+    ? '<div class="viewCon"><p>담당 업무: 행사 운영 및 행정 업무 지원</p><p>지원 자격: 중국어 능통자</p></div>'
+    : '<table><tr><td><a href="/recruitmentNoti/view.do?seq=1">주상하이한국문화원 채용</a></td><td>2026.09.01</td><td>2099.01.31</td></tr><tr><td><a href="/recruitmentNoti/view.do?seq=2">행정직원 채용</a></td><td>2026.09.01</td><td>2099.01.31</td></tr></table>');`);
+  const options = { env: { ...process.env, OPENJOB_RADAR_HOME: root } };
+  const collect = () => run(process.execPath, ['--import', pathToFileURL(mock).href, cli, 'collect', '--source', 'culture'], options);
+  await collect();
+  const before = await readJson(join(root, 'data/review.json'));
+  assert.equal(before.ready.length, 1);
+  assert.equal(before.needsReview.length, 1);
+  await run(process.execPath, [cli, 'reject', '--id', [...before.ready, ...before.needsReview].map((job) => job.id).join(',')], options);
+  await collect();
+  const after = await readJson(join(root, 'data/review.json'));
+  assert.equal(after.ready.length, 0);
+  assert.equal(after.needsReview.length, 0);
+  assert.equal((await readJson(join(root, 'data/rejected.json'))).length, 2);
+});
