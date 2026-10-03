@@ -13,7 +13,7 @@ if (!locked) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
   app.whenReady().then(async () => {
-    const workspaceRoot = app.getPath('userData');
+    const workspaceRoot = process.env.OPENJOB_RADAR_HOME || app.getPath('userData');
     await mkdir(join(workspaceRoot, 'data'), { recursive: true });
     server = createRadarServer({ workspaceRoot, authToken: token });
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });

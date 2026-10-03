@@ -2,7 +2,7 @@ name: Windows desktop build
 on:
   workflow_dispatch:
   push:
-    branches: [master, 'feat/windows-desktop-review']
+    branches: [master]
   pull_request:
     branches: [master]
 permissions:
@@ -19,8 +19,11 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run dist:win -- --publish never
+      - run: node scripts/desktop-smoke.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: OpenJob-Radar-Windows
-          path: dist/*Setup.exe
+          path: |
+            dist/*Setup.exe
+            dist/windows-desktop-smoke.png
           if-no-files-found: error

@@ -219,7 +219,7 @@ async function edit() {
   const { normalizeCandidate } = await import('./normalizeCandidate.js');
   const job = normalizeCandidate({
     ...item, title: text('title'), company: text('company'),
-    source: item.source || { name: item.sourceId || '수동 검토', url: item.url },
+    source: item.source || { name: SOURCES.find((source) => source.id === item.sourceId)?.name || item.sourceId || '수동 검토', url: item.url },
     location: { ...item.location, country: text('country'), city: text('city') },
     deadline: text('deadline'), summary: text('summary'),
     responsibilities: text('responsibilities').split('\n').filter(Boolean),
