@@ -74,7 +74,8 @@
           ]
         }
       ],
-      "artifactName": "OpenJob-Radar-${version}-Setup.${ext}"
+      "artifactName": "OpenJob-Radar-${version}-Setup.${ext}",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

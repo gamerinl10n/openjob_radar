@@ -58,7 +58,7 @@ const render = () => {
   const items = (history ? data[state.tab] || [] : state.tab === 'ready' ? ready : needsReview).filter((item) =>
     [item.title, item.company?.name, locationText(item)].join(' ').toLowerCase().includes(query) &&
     (!source || sourceName(item).includes(source) || ({ worldjob: '월드잡', culture: '문화원', kotra: 'KOTRA' }[item.sourceId] || '').includes(source)));
-  $('#report').textContent = data.lastRun ? JSON.stringify(data.lastRun, null, 2) : '아직 수집 기록이 없습니다.';
+  $('#report').textContent = data.lastRun ? data.lastRun.results.map((result) => `${result.name} · ${result.error ? '수집 실패: ' + result.error : '등록 후보 ' + (result.found || 0) + '건'}\n${(result.warnings || []).join('\n')}`).join('\n\n') : '아직 수집 기록이 없습니다.';
   state.selected = new Set([...state.selected].filter((id) => items.some((item) => item.id === id)));
   $('#queue').innerHTML = items.length ? items.map((item) => {
     const url = safeUrl(sourceUrl(item));
@@ -69,7 +69,7 @@ const render = () => {
         <div class="job-meta">
           <span>${escapeHtml(item.company?.name || sourceName(item))}</span>
           ${locationText(item) ? `<span>${escapeHtml(locationText(item))}</span>` : ''}
-          <span>${escapeHtml(item.id)}</span>
+          <span>${escapeHtml(sourceName(item))}</span>
         </div>
         ${item.deadline ? `<p class="job-meta">마감 ${escapeHtml(item.deadline)}</p>` : ''}
         <button type="button" class="ghost detail-button" data-edit="${escapeHtml(item.id)}">${history ? '상세 보기' : '상세 · 수정'}</button>
