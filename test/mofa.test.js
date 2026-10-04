@@ -77,3 +77,10 @@ test('backups accept all registered mission health records and reject unknown so
   const backup={format:'openjob-radar-backup',version:1,files:{'review.json':{ready:[],needsReview:[]},'approved.json':[],'rejected.json':[],'last-run.json':null,'state.json':{worldjob:{nextPage:1}},'source-health.json':{'mofa-china':{state:'success',warnings:[]},'mofa-shanghai':{state:'partial',warnings:['본문 확인']}}}};
   assert.ok(validateBackup(backup));backup.files['source-health.json'].unknown={state:'success',warnings:[]};assert.throws(()=>validateBackup(backup),/출처 상태/);
 });
+
+test('title date ranges use the explicit end date without guessing a partial-year deadline', () => {
+  const full=parseMofaListing(table(row(12,'주중국대사관 채용공고 (2020.1.1 ~ 2099.12.31까지)')),source);
+  assert.equal(full.items[0].deadline,'2099-12-31');
+  const partial=parseMofaListing(table(row(12,'주중국대사관 채용공고 (2020.1.1 ~ 12.31까지)')),source);
+  assert.equal(partial.items[0].deadline,'');assert.equal(partial.stats.expired,0);
+});

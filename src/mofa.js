@@ -11,8 +11,8 @@ const text = (html = '') => html.replace(/<!--[\s\S]*?-->/g, '').replace(/<(scri
 const todayKorea = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 const resultNotice = /합격|결과\s*발표|면접\s*(?:안내|대상)|채용\s*취소/;
 const date = value => {
-  const match = value.match(/(20\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/);
-  if (!match) return '';
+  const match = [...value.matchAll(/(20\d{2})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/g)].at(-1);
+  if (!match || /\d{1,2}[.\/월]\s*\d{1,2}/.test(value.slice(match.index + match[0].length))) return '';
   const result = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
   const timestamp = Date.parse(result);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === result ? result : '';
