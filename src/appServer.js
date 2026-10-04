@@ -1,3 +1,4 @@
+import { COLLECTION_SOURCES } from './sources.js';
 import { reviewReasons } from './reviewInsights.js';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -12,11 +13,12 @@ import { readJson } from './storage.js';
 const execFileAsync = promisify(execFile);
 const cliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
 const webRoot = fileURLToPath(new URL('./web/', import.meta.url));
-const sourceIds = new Set(['culture', 'kotra', 'worldjob']);
+const sourceIds = new Set(COLLECTION_SOURCES.map(source => source.id));
 const emptyReview = () => ({ schemaVersion: 1, updatedAt: null, ready: [], needsReview: [] });
 
 const staticFiles = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
+  ['/sources.js', ['../sources.js', 'text/javascript; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/favicon.svg', ['favicon.svg', 'image/svg+xml']],

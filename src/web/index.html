@@ -36,9 +36,6 @@
           <p id="last-run">최근 실행 기록 없음</p>
         </div>
         <div class="source-list" role="group" aria-label="수집 출처">
-          <label><input type="checkbox" name="source" value="worldjob" checked /><span>월드잡플러스</span></label>
-          <label><input type="checkbox" name="source" value="culture" checked /><span>재외한국문화원</span></label>
-          <label><input type="checkbox" name="source" value="kotra" checked /><span>KOTRA</span></label>
         </div>
         <div class="collector-actions">
           <label class="depth-label">수집 범위 <select id="collection-depth"><option value="standard">기본 수집</option><option value="extended">확장 수집 · 출처별 최대 5페이지</option></select></label>
@@ -64,7 +61,7 @@
           <button class="tab" role="tab" aria-selected="false" data-tab="approved">승인 기록</button>
           <button class="tab" role="tab" aria-selected="false" data-tab="rejected">제외 기록</button>
         </div>
-        <div class="filters"><input id="search" type="search" placeholder="제목 · 회사 · 지역 검색" aria-label="공고 검색" /><select id="source-filter" aria-label="출처 필터"><option value="">모든 출처</option><option>월드잡</option><option>문화원</option><option>KOTRA</option></select></div>
+        <div class="filters"><input id="search" type="search" placeholder="제목 · 회사 · 지역 검색" aria-label="공고 검색" /><select id="source-filter" aria-label="출처 필터"><option value="">모든 출처</option></select></div>
         <div class="insight-filters"><select id="reason-filter" aria-label="확인 사유 필터"><option value="">모든 확인 사유</option><option value="image">이미지 본문</option><option value="attachment">첨부파일</option><option value="deadline">마감일</option><option value="location">근무지</option><option value="duties">담당 업무</option><option value="qualifications">지원 자격</option><option value="timeout">조회 시간 부족</option><option value="fetch">조회·분석 실패</option></select><select id="sort-order" aria-label="정렬"><option value="default">기본 순서</option><option value="deadline">마감 빠른 순</option><option value="changed">원문 변경 먼저</option></select></div>
         <div class="interest-controls"><input id="interest-keywords" aria-label="관심 키워드" placeholder="관심 키워드 · 쉼표로 구분 (번역, 현지화, 중국어)" /><label><input id="interest-only" type="checkbox" /> 관심 공고만</label></div>
         <div id="queue" class="queue" aria-live="polite"></div>

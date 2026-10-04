@@ -1,3 +1,4 @@
+import { COLLECTION_SOURCES } from './sources.js';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readJson, writeJson, acquireLock, recoverTransaction, commitTransaction, sourceUrlOf } from './storage.js';
@@ -30,7 +31,7 @@ export function validateBackup(backup) {
   const state = files['state.json'];
   if (!object(state) || !object(state.worldjob) || !Number.isInteger(state.worldjob.nextPage) || state.worldjob.nextPage < 1) throw new Error('수집 위치 정보가 올바르지 않습니다.');
   const health = files['source-health.json'];
-  if (!object(health) || Object.entries(health).some(([id, value]) => !['culture','worldjob','kotra'].includes(id) || !object(value) || !['failed','partial','success'].includes(value.state) || !Array.isArray(value.warnings))) throw new Error('출처 상태 정보가 올바르지 않습니다.');
+  if (!object(health) || Object.entries(health).some(([id, value]) => !COLLECTION_SOURCES.some(source => source.id === id) || !object(value) || !['failed','partial','success'].includes(value.state) || !Array.isArray(value.warnings))) throw new Error('출처 상태 정보가 올바르지 않습니다.');
   const report = files['last-run.json'];
   if (report !== null && (!object(report) || !Array.isArray(report.results) || report.results.some((entry) => !object(entry) || (entry.warnings !== undefined && !Array.isArray(entry.warnings))))) throw new Error('수집 보고서 형식이 올바르지 않습니다.');
   return files;

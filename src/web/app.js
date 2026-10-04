@@ -1,8 +1,11 @@
+import { COLLECTION_SOURCES } from '/sources.js';
 const state = { data: null, tab: 'ready', selected: new Set(), busy: false, editingId: null, dirty: false };
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const names = { worldjob: '월드잡플러스', culture: '재외한국문화원', kotra: 'KOTRA' };
+const names = Object.fromEntries(COLLECTION_SOURCES.map(source => [source.id, source.name]));
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c]);
+$('.source-list').innerHTML = COLLECTION_SOURCES.map(source => `<label><input type="checkbox" name="source" value="${escapeHtml(source.id)}" checked /><span>${escapeHtml(source.name)}</span></label>`).join('');
+$('#source-filter').innerHTML = '<option value="">모든 출처</option>' + COLLECTION_SOURCES.map(source => `<option>${escapeHtml(source.name)}</option>`).join('');
 const sourceUrl = (item) => item.source?.url || item.sourceUrl || item.url || '';
 const sourceName = (item) => item.source?.name || names[item.sourceId] || item.sourceId || '출처 확인 필요';
 const locationText = (item) => [item.location?.country, item.location?.city].filter(Boolean).join(' · ');
@@ -93,6 +96,7 @@ function openEditor(id) {
   $('#editor-insights').innerHTML = (item.reason ? `<p class="reason">${escapeHtml(item.reason)}</p>` : '')
     + (item.radar?.sourceNotice ? `<p class="reason">최근 원문 확인: ${escapeHtml(item.radar.sourceNotice)}</p>` : '')
     + (item.radar?.sourceChanges?.length ? '<p class="change-notice">원문이 변경됐습니다. 저장된 검토 내용은 유지했습니다.</p>' + item.radar.sourceChanges.map(change => `<details><summary>${escapeHtml(labels[change.field] || change.field)} 변경</summary><p>이전 원문: ${showValue(change.before)}</p><p>최근 원문: ${showValue(change.after)}</p></details>`).join('') : '')
+    + (item.attachments || []).map(file => safeUrl(file.url) ? `<p><a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeUrl(file.url))}">첨부 · ${escapeHtml(file.name)} ↗</a></p>` : '').join('')
     + (item.radar?.relatedSources || []).map(source => safeUrl(source.url) ? `<p><a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeUrl(source.url))}">같은 공고 · ${escapeHtml(source.name)} ↗</a></p>` : '').join('');
   $('#editor').hidden = false; render();
   if (matchMedia('(max-width:1000px)').matches) $('#editor').scrollIntoView({ behavior: 'smooth', block: 'start' });

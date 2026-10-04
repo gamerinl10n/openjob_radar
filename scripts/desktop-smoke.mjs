@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 const root = await mkdtemp(join(tmpdir(), 'radar-packaged-'));
 await mkdir(join(root, 'data'));
 await writeFile(join(root, 'data/review.json'), JSON.stringify({ ready: [], needsReview: [
-  { id: 'pending-smoke', title: '[샘플] 한국어 번역가', sourceId: 'worldjob', url: 'https://example.com/job/1', reason: '업무·자격 확인 필요' },
+  { id: 'pending-smoke', title: '[샘플] 한국어 번역가', sourceId: 'mofa-china', url: 'https://www.mofa.go.kr/cn-ko/brd/m_1276/view.do?seq=1', reason: '업무·자격 확인 필요', attachments: [{name: '검증용.hwp', url: 'https://www.mofa.go.kr/cn-ko/brd/m_1276/down.do?seq=1&brd_id=1&data_tp=A&file_seq=1'}] },
 ] }));
 const application = await electron.launch({
   executablePath: resolve('dist/win-unpacked/OpenJob Radar.exe'),
@@ -16,11 +16,16 @@ const application = await electron.launch({
 try {
   const page = await application.firstWindow();
   await page.locator('#review-count').filter({ hasText: '1' }).waitFor();
+  assert.equal(await page.locator('input[name=source]').count(), 5);
+  await page.getByRole('checkbox', { name: '주중국대사관', exact: true }).waitFor();
+  await page.getByRole('checkbox', { name: '주상하이총영사관', exact: true }).waitFor();
   await page.selectOption('#collection-depth', 'extended');
   await page.getByRole('tab', { name: '확인 필요' }).click();
   await page.selectOption('#reason-filter', 'qualifications');
   await page.locator('.insight-badges').filter({ hasText: '지원 자격 확인' }).waitFor();
+  await page.selectOption('#source-filter', '주중국대사관');
   await page.getByRole('button', { name: '상세 · 수정' }).click();
+  await page.getByRole('link', { name: '첨부 · 검증용.hwp' }).waitFor();
   await page.getByRole('textbox', { name: '회사 · 기관' }).fill('검증용 스튜디오');
   await page.getByRole('textbox', { name: '국가', exact: true }).fill('중국');
   await page.getByRole('textbox', { name: '도시', exact: true }).fill('상하이');
