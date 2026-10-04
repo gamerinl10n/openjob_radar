@@ -1,3 +1,4 @@
+import { normalizeCandidate } from './normalizeCandidate.js';
 import { workLocationDecision } from './workLocationPolicy.js';
 import { canonicalKotraUrl, collectKotra } from './kotra.js';
 import { canonicalWorldjobUrl, collectWorldjob } from './worldjob.js';
@@ -231,46 +232,48 @@ export async function fetchHtml(url, fetcher = fetch, options = {}) {
     throw new Error(explainFetchError(error));
   }
 }
-export function nextListingPages(html, source) {
+export function nextListingPages(html, source, maxPages = 3) {
   const base = new URL(source.url);
   const pages = new Map();
   for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["']/gi)) {
     try {
       const url = new URL(match[1].replace(/&amp;/g, '&'), base);
       const page = Number(url.searchParams.get('page'));
-      if (url.origin === base.origin && url.pathname === base.pathname && Number.isInteger(page) && page >= 2 && page <= 3)
+      if (url.origin === base.origin && url.pathname === base.pathname && Number.isInteger(page) && page >= 2 && page <= maxPages)
         pages.set(page, url.href);
     } catch { /* Ignore JavaScript and invalid navigation. */ }
   }
   return [...pages].sort((a,b) => a[0] - b[0]).map(([,url]) => url);
 }
-export async function collectPublicJobCandidates(sourceIds = SOURCES.map((s) => s.id), { fetcher = fetch, worldjobProgress = {}, knownKotraUrls = [] } = {}) {
+export async function collectPublicJobCandidates(sourceIds = SOURCES.map((s) => s.id), { fetcher = fetch, worldjobProgress = {}, knownKotraUrls = [], depth = 'standard' } = {}) {
+  if (!['standard', 'extended'].includes(depth)) throw new Error('지원하지 않는 수집 범위입니다.');
+  const extended = depth === 'extended';
   const runRequest = createRequestLimiter(MAX_CONCURRENT_REQUESTS);
   const results = await Promise.all(SOURCES.filter((s) => sourceIds.includes(s.id)).map(async (source) => {
     let requestRetries = 0;
     const onRetry = () => { requestRetries++; };
     const limitedFetchHtml = (url, request) => runRequest(() => fetchHtml(url, fetcher, { onRetry, request }));
     if (source.id === 'worldjob') {
-      const result = await collectWorldjob(source, { ...worldjobProgress, fetchHtml: limitedFetchHtml });
+      const result = await collectWorldjob(source, { ...worldjobProgress, maxPages: extended ? 5 : undefined, fetchHtml: limitedFetchHtml });
       result.stats.requestRetries = requestRetries;
       return result;
     }
     if (source.id === 'kotra') {
-      const result = await collectKotra(source, { fetchHtml: limitedFetchHtml, knownUrls: knownKotraUrls });
+      const result = await collectKotra(source, { fetchHtml: limitedFetchHtml, knownUrls: knownKotraUrls, maxPages: extended ? 5 : 1 });
       result.stats.requestRetries = requestRetries;
       return result;
     }
     const result = { id: source.id, name: source.name, found: 0, candidates: [], warnings: [], exclusions: [], pending: [],
-      stats: { pages: 0, read: 0, unrelated: 0, expired: 0, invalid: 0, detailFailed: 0, attachmentPending: 0, pdfRead: 0 }, scope: '첫 페이지 및 링크로 확인된 2~3페이지' };
-    const stopAt = Date.now() + 40000;
+      stats: { pages: 0, read: 0, unrelated: 0, expired: 0, invalid: 0, detailFailed: 0, attachmentPending: 0, pdfRead: 0 }, scope: extended ? '링크로 확인된 최대 5페이지 · 상세 최대 150건' : '첫 페이지 및 링크로 확인된 2~3페이지 · 상세 최대 30건' };
+    const stopAt = Date.now() + (extended ? 180000 : 40000);
     const pending = (job, reason) => {
       result.stats.attachmentPending++;
-      result.pending.push({ title: job.title, url: job.sourceUrl, reason,
+      result.pending.push({ draft: normalizeCandidate(job), title: job.title, url: job.sourceUrl, reason,
         attachments: (job.attachments || []).map(({ name, url }) => ({ name, url })) });
     };
     try {
       const first = await limitedFetchHtml(source.url);
-      const queue = [source.url, ...nextListingPages(first, source)];
+      const queue = [source.url, ...nextListingPages(first, source, extended ? 5 : 3)];
       const unique = new Map();
       for (let i = 0; i < queue.length; i++) {
         try {
@@ -289,13 +292,14 @@ export async function collectPublicJobCandidates(sourceIds = SOURCES.map((s) => 
         }
       }
       const listing = [...unique.values()];
-      // At most 30 rows across three pages; batches contain ten rows while all outbound requests share one cap.
-      for (let offset = 0; offset < Math.min(listing.length, 30); offset += 10) {
+      const detailLimit = extended ? 150 : 30;
+      // Bounded batches share the same request cap across all sources.
+      for (let offset = 0; offset < Math.min(listing.length, detailLimit); offset += 10) {
         if (Date.now() + 10000 > stopAt) {
-          for (const item of listing.slice(offset, 30)) pending(item, '이번 실행의 조회 시간이 부족합니다. 다시 수집하거나 원문을 확인해 주세요.');
+          for (const item of listing.slice(offset, detailLimit)) pending(item, '이번 실행의 조회 시간이 부족합니다. 다시 수집하거나 원문을 확인해 주세요.');
           break;
         }
-        const batch = listing.slice(offset, offset + 10);
+        const batch = listing.slice(offset, Math.min(offset + 10, detailLimit));
         const details = await Promise.allSettled(batch.map(async (item) => {
           const job = parsePublicDetail(await limitedFetchHtml(item.sourceUrl), item);
           return enrichPublicDetail(job, { fetcher, runRequest, onRetry, skipPdf: Date.now() + (process.platform === 'win32' ? 23000 : 14000) > stopAt });
@@ -324,7 +328,7 @@ export async function collectPublicJobCandidates(sourceIds = SOURCES.map((s) => 
         });
       }
       result.found = result.candidates.length;
-      if (listing.length > 30) result.warnings.push('상세 조회는 이번 실행에서 30건으로 제한되었습니다.');
+      if (listing.length > detailLimit) result.warnings.push(`상세 조회는 이번 실행에서 ${detailLimit}건으로 제한되었습니다.`);
       if (result.stats.invalid) result.warnings.push('상세주소를 해석하지 못한 공고가 있습니다.');
       result.emptyReason = result.candidates.length || result.stats.detailFailed ? '' : result.stats.invalid ? '주소 분석 실패로 수집 대상 여부를 확정하지 못했습니다.'
         : '조회한 범위에서 조건에 맞는 진행 중 공고가 없습니다.';

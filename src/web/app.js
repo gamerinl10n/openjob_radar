@@ -13,7 +13,13 @@ const tabItems = () => history() ? state.data?.[state.tab] || [] : state.data?.r
 const visibleItems = () => {
   const query = $('#search').value.trim().toLowerCase();
   const source = $('#source-filter').value;
-  return tabItems().filter((item) => [item.title, item.company?.name, locationText(item)].join(' ').toLowerCase().includes(query) && (!source || sourceName(item).includes(source)));
+  const keywords = $('#interest-keywords').value.toLowerCase().split(',').map(value => value.trim()).filter(Boolean);
+  const reason = state.tab === 'needsReview' ? $('#reason-filter').value : '';
+  const items = tabItems().filter((item) => (!reason || (item.reviewReasons || []).some(value => value.code === reason)) && (!$('#interest-only').checked || !keywords.length || keywords.some(word => JSON.stringify([item.title, item.summary, item.requirements, item.languages, item.location]).toLowerCase().includes(word))) && [item.title, item.company?.name, locationText(item)].join(' ').toLowerCase().includes(query) && (!source || sourceName(item).includes(source)));
+  const sort = $('#sort-order').value;
+  if (sort === 'deadline') items.sort((a,b) => (a.deadline || '9999').localeCompare(b.deadline || '9999'));
+  if (sort === 'changed') items.sort((a,b) => Number(Boolean(b.radar?.sourceChanges?.length || b.radar?.sourceNotice)) - Number(Boolean(a.radar?.sourceChanges?.length || a.radar?.sourceNotice)));
+  return items;
 };
 const notice = (message, error = false) => {
   $('#notice').textContent = message; $('#notice').classList.toggle('error', error); $('#notice').hidden = false;
@@ -26,7 +32,7 @@ const request = async (path, options) => {
   return payload;
 };
 function remember() {
-  try { localStorage.setItem('radar-view', JSON.stringify({ tab: state.tab, query: $('#search').value, source: $('#source-filter').value })); } catch {}
+  try { localStorage.setItem('radar-view', JSON.stringify({ tab: state.tab, query: $('#search').value, source: $('#source-filter').value, reason: $('#reason-filter').value, sort: $('#sort-order').value, keywords: $('#interest-keywords').value, interestOnly: $('#interest-only').checked, depth: $('#collection-depth').value })); } catch {}
 }
 function render() {
   const data = state.data; if (!data) return;
@@ -38,7 +44,8 @@ function render() {
     const label = { success: '수집 완료', partial: '일부 확인 필요', failed: '실패' }[health?.state] || '실행 전';
     return `<article class="health-card"><strong>${name}</strong><span class="health-state ${escapeHtml(health?.state || '')}">${label}</span><p>최근 시도 ${escapeHtml(dateText(health?.lastAttemptAt))}<br>최근 성공 ${escapeHtml(dateText(health?.lastSuccessAt))}${health?.error ? `<br>${escapeHtml(health.error)}` : ''}</p></article>`;
   }).join('');
-  $('#report').textContent = data.lastRun ? data.lastRun.results.map((result) => `${result.name} · ${result.error ? '수집 실패: ' + result.error : '등록 후보 ' + (result.found || 0) + '건'}\n${(result.warnings || []).join('\n')}`).join('\n\n') : '아직 수집 기록이 없습니다.';
+  $('#report').textContent = data.lastRun ? data.lastRun.results.map((result) => `${result.name} · ${result.error ? '수집 실패: ' + result.error : '등록 후보 ' + (result.found || 0) + '건'}\n${result.scope || ''} · 조회 ${result.stats?.read || 0}건 / ${result.stats?.pages || 0}페이지\n${(result.warnings || []).join('\n')}`).join('\n\n') + `\n\n중복 확인 ${data.lastRun.duplicates || 0}건 · 원문 변경 ${data.lastRun.changed || 0}건` : '아직 수집 기록이 없습니다.';
+  $('#reason-filter').disabled = state.tab !== 'needsReview';
   const items = visibleItems();
   state.selected = new Set([...state.selected].filter((id) => items.some((item) => item.id === id)));
   $('#queue').innerHTML = items.length ? items.map((item) => {
@@ -48,6 +55,10 @@ function render() {
       <div><h3>${escapeHtml(item.title || '제목 없음')}</h3><div class="job-meta"><span>${escapeHtml(item.company?.name || sourceName(item))}</span><span>${escapeHtml(locationText(item))}</span><span>${escapeHtml(sourceName(item))}</span></div>
       ${item.deadline ? `<p class="job-meta">마감 ${escapeHtml(item.deadline)}</p>` : ''}
       <button type="button" class="ghost detail-button" data-edit="${escapeHtml(item.id)}">${history() ? '상세 보기' : '상세 · 수정'}</button>
+      ${(item.reviewReasons || []).length ? `<div class="insight-badges">${item.reviewReasons.map(reason => `<span>${escapeHtml(reason.label)}</span>`).join('')}</div>` : ''}
+      ${item.radar?.sourceChanges?.length ? '<p class="change-notice">원문 변경 감지 · 상세에서 비교하세요</p>' : ''}
+      ${item.radar?.sourceNotice ? `<p class="reason">최근 원문 확인: ${escapeHtml(item.radar.sourceNotice)}</p>` : ''}
+      ${item.radar?.relatedSources?.length ? `<p class="job-meta">동일 공고 출처 ${item.radar.relatedSources.length + 1}곳</p>` : ''}
       ${item.reason ? `<p class="reason">확인 사유: ${escapeHtml(item.reason)}</p>` : ''}</div>
       ${url ? `<a class="source-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">원문 열기 ↗</a>` : ''}</article>`;
   }).join('') : '<div class="empty">조건에 맞는 공고가 없습니다.</div>';
@@ -77,6 +88,12 @@ function openEditor(id) {
     summary: item.summary, responsibilities: (item.responsibilities || []).join('\n'), requirements: (item.requirements || []).join('\n') };
   for (const [key, value] of Object.entries(values)) { const input = $('#edit-form').elements.namedItem(key); input.value = value || ''; input.readOnly = history(); }
   $('#save-edit').hidden = history(); $('#editor-source').href = safeUrl(sourceUrl(item)) || '#';
+  const labels = { title: '제목', company: '회사', location: '근무지', deadline: '마감일', summary: '요약', responsibilities: '담당 업무', requirements: '지원 자격', preferred: '우대 사항', languages: '언어', employmentType: '고용 형태', application: '지원 방법' };
+  const showValue = value => escapeHtml(typeof value === 'string' ? value : JSON.stringify(value));
+  $('#editor-insights').innerHTML = (item.reason ? `<p class="reason">${escapeHtml(item.reason)}</p>` : '')
+    + (item.radar?.sourceNotice ? `<p class="reason">최근 원문 확인: ${escapeHtml(item.radar.sourceNotice)}</p>` : '')
+    + (item.radar?.sourceChanges?.length ? '<p class="change-notice">원문이 변경됐습니다. 저장된 검토 내용은 유지했습니다.</p>' + item.radar.sourceChanges.map(change => `<details><summary>${escapeHtml(labels[change.field] || change.field)} 변경</summary><p>이전 원문: ${showValue(change.before)}</p><p>최근 원문: ${showValue(change.after)}</p></details>`).join('') : '')
+    + (item.radar?.relatedSources || []).map(source => safeUrl(source.url) ? `<p><a target="_blank" rel="noopener noreferrer" href="${escapeHtml(safeUrl(source.url))}">같은 공고 · ${escapeHtml(source.name)} ↗</a></p>` : '').join('');
   $('#editor').hidden = false; render();
   if (matchMedia('(max-width:1000px)').matches) $('#editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -112,7 +129,7 @@ $('#edit-form').addEventListener('submit', async (event) => {
 for (const [button, delta] of [['previous-job', -1], ['next-job', 1]]) $(`#${button}`).addEventListener('click', () => {
   const items = visibleItems(); const next = items[items.findIndex((job) => job.id === state.editingId) + delta]; if (next) openEditor(next.id);
 });
-$('#collect').addEventListener('click', () => mutate('/api/collect', { sources: $$('input[name="source"]:checked').map((input) => input.value), dryRun: $('#dry-run').checked }, '선택한 출처에서 공고를 수집하고 있습니다…'));
+$('#collect').addEventListener('click', () => mutate('/api/collect', { sources: $$('input[name="source"]:checked').map((input) => input.value), dryRun: $('#dry-run').checked, depth: $('#collection-depth').value }, '선택한 출처에서 공고를 수집하고 있습니다…'));
 $('#retry').addEventListener('click', () => mutate('/api/retry', {}, '실패한 출처만 다시 수집하고 있습니다…'));
 for (const [id, path, message] of [['approve','approve','선택한 공고를 승인합니다.'], ['reject','reject','선택한 공고를 제외합니다.'], ['unreject','unreject','제외를 취소하고 원래 목록으로 옮깁니다.']]) {
   $(`#${id}`).addEventListener('click', async () => {
@@ -121,7 +138,7 @@ for (const [id, path, message] of [['approve','approve','선택한 공고를 승
   });
 }
 $('#refresh').addEventListener('click', () => refresh().catch((error) => notice(error.message, true)));
-for (const id of ['search', 'source-filter']) $(`#${id}`).addEventListener(id === 'search' ? 'input' : 'change', () => { remember(); render(); });
+for (const id of ['search', 'source-filter', 'reason-filter', 'sort-order', 'interest-keywords', 'interest-only', 'collection-depth']) $(`#${id}`).addEventListener(['search', 'interest-keywords'].includes(id) ? 'input' : 'change', () => { remember(); render(); });
 $('#backup').addEventListener('click', async () => {
   state.pending = true; state.busy = true; render();
   try {
@@ -145,6 +162,6 @@ $('#restore-file').addEventListener('change', async (event) => {
   } catch (error) { notice(error.message, true); }
 });
 window.addEventListener('beforeunload', (event) => { if (state.dirty) { event.preventDefault(); event.returnValue = ''; } });
-try { const view = JSON.parse(localStorage.getItem('radar-view') || '{}'); if (['ready','needsReview','approved','rejected'].includes(view.tab)) state.tab = view.tab; $('#search').value = view.query || ''; $('#source-filter').value = view.source || ''; } catch {}
+try { const view = JSON.parse(localStorage.getItem('radar-view') || '{}'); if (['ready','needsReview','approved','rejected'].includes(view.tab)) state.tab = view.tab; $('#search').value = view.query || ''; $('#source-filter').value = view.source || ''; $('#reason-filter').value = view.reason || ''; $('#sort-order').value = view.sort || 'default'; $('#interest-keywords').value = view.keywords || ''; $('#interest-only').checked = Boolean(view.interestOnly); $('#collection-depth').value = view.depth === 'extended' ? 'extended' : 'standard'; } catch {}
 refresh().catch((error) => notice(error.message, true));
 setInterval(() => { if (state.busy || state.data?.operation) refresh().catch(() => {}); }, 2000);
