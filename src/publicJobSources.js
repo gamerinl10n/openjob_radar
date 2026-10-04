@@ -1,3 +1,4 @@
+import { canonicalMofaUrl, collectMofa } from './mofa.js';
 import { normalizeCandidate } from './normalizeCandidate.js';
 import { workLocationDecision } from './workLocationPolicy.js';
 import { canonicalKotraUrl, collectKotra } from './kotra.js';
@@ -24,6 +25,8 @@ export const clean = (value = '') => value.replace(/<script\b[^>]*>[\s\S]*?<\/sc
 const dates = (text) => [...text.matchAll(/(20\d{2})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})/g)]
   .map((m) => m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0'));
 export function canonicalPublicUrl(value) {
+  const mofa = canonicalMofaUrl(value);
+  if (mofa) return mofa;
   const kotra = canonicalKotraUrl(value);
   if (kotra) return kotra;
   const worldjob = canonicalWorldjobUrl(value);
@@ -189,18 +192,26 @@ async function limitedHtml(response) {
     reader.releaseLock();
   }
 }
-async function fetchHtmlOnce(url, fetcher, request = {}) {
+async function fetchHtmlOnce(url, fetcher, { request = {}, timeoutMs = 10000, cookies = new Map() } = {}) {
   const origin = new URL(url).origin;
-  const signal = AbortSignal.timeout(10000);
+  const signal = AbortSignal.timeout(timeoutMs);
   const visited = new Set();
   let current = url;
   for (let hop = 0; hop <= 3; hop++) {
-    if (visited.has(current)) throw new Error('출처 주소 이동이 반복됩니다. (redirect_loop)');
-    visited.add(current);
+    const cookie = [...cookies].map(([name, value]) => `${name}=${value}`).join('; ');
+    const visitKey = current + '\n' + cookie;
+    if (visited.has(visitKey)) throw new Error('출처 주소 이동이 반복됩니다. (redirect_loop)');
+    visited.add(visitKey);
     const response = await fetcher(current, { redirect: 'manual', signal,
       ...(request.method ? { method: request.method } : {}),
       ...(request.body !== undefined ? { body: request.body } : {}),
-      headers: { Accept: 'text/html', 'User-Agent': 'OpenJobRadar/0.1 (+https://github.com/gamerinl10n/openjob_radar)', ...request.headers } });
+      headers: { Accept: 'text/html', 'User-Agent': 'OpenJobRadar/0.1 (+https://github.com/gamerinl10n/openjob_radar)', ...request.headers, ...(cookie ? { Cookie: cookie } : {}) } });
+    // Public load-balancer sessions may set a cookie then redirect to the same URL.
+    // Keep these cookies within this request chain (or the current official mission collection).
+    for (const header of response.headers.getSetCookie?.() || []) {
+      const pair = header.split(';', 1)[0]; const at = pair.indexOf('=');
+      if (at > 0 && pair.length <= 4096 && cookies.size < 10) cookies.set(pair.slice(0, at), pair.slice(at + 1));
+    }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       if (request.method === 'POST') {
         await response.body?.cancel();
@@ -227,7 +238,7 @@ async function fetchHtmlOnce(url, fetcher, request = {}) {
 }
 export async function fetchHtml(url, fetcher = fetch, options = {}) {
   try {
-    return await withTransientRetry(() => fetchHtmlOnce(url, fetcher, options.request), options);
+    return await withTransientRetry(() => fetchHtmlOnce(url, fetcher, options), options);
   } catch (error) {
     throw new Error(explainFetchError(error));
   }
@@ -252,7 +263,13 @@ export async function collectPublicJobCandidates(sourceIds = SOURCES.map((s) => 
   const results = await Promise.all(SOURCES.filter((s) => sourceIds.includes(s.id)).map(async (source) => {
     let requestRetries = 0;
     const onRetry = () => { requestRetries++; };
-    const limitedFetchHtml = (url, request) => runRequest(() => fetchHtml(url, fetcher, { onRetry, request }));
+    const missionCookies = source.kind === 'mofa' ? new Map() : undefined;
+    const limitedFetchHtml = (url, request) => runRequest(() => fetchHtml(url, fetcher, { onRetry, request, cookies: missionCookies, timeoutMs: source.kind === 'mofa' ? 30000 : 10000 }));
+    if (source.kind === 'mofa') {
+      const result = await collectMofa(source, { fetchHtml: limitedFetchHtml, maxPages: extended ? 5 : 3 });
+      result.stats.requestRetries = requestRetries;
+      return result;
+    }
     if (source.id === 'worldjob') {
       const result = await collectWorldjob(source, { ...worldjobProgress, maxPages: extended ? 5 : undefined, fetchHtml: limitedFetchHtml });
       result.stats.requestRetries = requestRetries;

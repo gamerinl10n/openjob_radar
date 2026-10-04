@@ -23,7 +23,7 @@ const defaults = {
 const help = `OpenJob Radar 공개 공고 수집기
 
 사용법:
-  openjob-radar collect [--source culture,kotra,worldjob] [--depth standard|extended] [--dry-run]
+  openjob-radar collect [--source culture,kotra,worldjob,mofa-china,mofa-shanghai] [--depth standard|extended] [--dry-run]
   openjob-radar list
   openjob-radar approve --id <공고 ID>[,<공고 ID>]
   openjob-radar reject --id <공고 ID>[,<공고 ID>]

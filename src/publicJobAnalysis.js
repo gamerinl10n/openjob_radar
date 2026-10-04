@@ -1,3 +1,4 @@
+import { mofaSourceFor, parseMofaDetail } from './mofa.js';
 import { workLocationDecision } from './workLocationPolicy.js';
 import { parseWorldjobDetail } from './worldjob.js';
 import { assessKotraDetail, fetchKotraDetail } from './kotra.js';
@@ -14,7 +15,7 @@ export function candidateData(candidate) {
 }
 export async function analyzePublicUrl(sourceUrl, { fetcher = fetch, pdfOptions = {} } = {}) {
  const url = canonicalPublicUrl(sourceUrl);
- const source = SOURCES.find(s => url && new URL(s.url).origin === new URL(url).origin);
+ const source = mofaSourceFor(url) || SOURCES.find(s => s.kind !== 'mofa' && url && new URL(s.url).origin === new URL(url).origin);
  if (!source) throw new Error('현재 수집을 지원하는 사이트의 상세 공고만 재분석할 수 있습니다.');
  if (source.id === 'kotra') {
   const item = { sourceUrl: url, externalId: new URL(url).searchParams.get('nttSeq'), postedAt: '' };
@@ -23,6 +24,10 @@ export async function analyzePublicUrl(sourceUrl, { fetcher = fetch, pdfOptions 
   return { identity: candidateIdentity(url), proposed_data: candidateData(candidate), outcome, reason };
  }
  const html = await fetchHtml(url, fetcher);
+ if (source.kind === 'mofa') {
+  const { outcome, candidate, reason } = parseMofaDetail(html, { sourceUrl: url, sourceName: source.name, externalId: `${source.id}-${new URL(url).searchParams.get('seq')}` });
+  return { identity: candidateIdentity(url), proposed_data: candidateData(candidate), outcome, reason };
+ }
  if (source.id === 'worldjob') {
   const candidate = parseWorldjobDetail(html, url);
   const expired = candidate.deadline && candidate.deadline < new Date(Date.now()+9*3600000).toISOString().slice(0,10);

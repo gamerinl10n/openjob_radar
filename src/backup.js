@@ -1,3 +1,4 @@
+import { COLLECTION_SOURCES } from './sources.js';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readJson, writeJson, acquireLock, recoverTransaction, commitTransaction, sourceUrlOf } from './storage.js';
@@ -25,12 +26,13 @@ export function validateBackup(backup) {
   if (files['rejected.json'].some((item) => !['ready','needsReview'].includes(item.queue))) throw new Error('제외 기록의 원래 목록 정보가 없습니다.');
   for (const item of [...review.ready, ...review.needsReview, ...files['approved.json'], ...files['rejected.json']]) {
     if (item.source !== undefined && (!object(item.source) || (item.source.name !== undefined && typeof item.source.name !== 'string'))) throw new Error('공고 출처 정보가 올바르지 않습니다.');
+    if (item.attachments !== undefined && (!Array.isArray(item.attachments) || item.attachments.some(file => !object(file) || typeof file.name !== 'string' || typeof file.url !== 'string'))) throw new Error('첨부파일 정보 형식이 올바르지 않습니다.');
     for (const key of ['responsibilities', 'requirements']) if (item[key] !== undefined && (!Array.isArray(item[key]) || item[key].some((v) => typeof v !== 'string'))) throw new Error('공고 세부 내용 형식이 올바르지 않습니다.');
   }
   const state = files['state.json'];
   if (!object(state) || !object(state.worldjob) || !Number.isInteger(state.worldjob.nextPage) || state.worldjob.nextPage < 1) throw new Error('수집 위치 정보가 올바르지 않습니다.');
   const health = files['source-health.json'];
-  if (!object(health) || Object.entries(health).some(([id, value]) => !['culture','worldjob','kotra'].includes(id) || !object(value) || !['failed','partial','success'].includes(value.state) || !Array.isArray(value.warnings))) throw new Error('출처 상태 정보가 올바르지 않습니다.');
+  if (!object(health) || Object.entries(health).some(([id, value]) => !COLLECTION_SOURCES.some(source => source.id === id) || !object(value) || !['failed','partial','success'].includes(value.state) || !Array.isArray(value.warnings))) throw new Error('출처 상태 정보가 올바르지 않습니다.');
   const report = files['last-run.json'];
   if (report !== null && (!object(report) || !Array.isArray(report.results) || report.results.some((entry) => !object(entry) || (entry.warnings !== undefined && !Array.isArray(entry.warnings))))) throw new Error('수집 보고서 형식이 올바르지 않습니다.');
   return files;

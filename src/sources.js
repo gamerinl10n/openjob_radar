@@ -2,6 +2,8 @@ export const COLLECTION_SOURCES = Object.freeze([
   { id: 'worldjob', name: '월드잡플러스', mode: 'manual', url: 'https://www.worldjob.or.kr/advnc/cnttNewList.do?showItemListCount=30' },
   { id: 'culture', name: '재외한국문화원', mode: 'manual', url: 'https://www.korean-culture.org/recruitmentNoti.do' },
   { id: 'kotra', name: 'KOTRA 본사 채용', mode: 'manual', url: 'https://www.kotra.or.kr/subList/20000005817' },
+  { id: 'mofa-china', name: '주중국대사관', mode: 'manual', kind: 'mofa', url: 'https://www.mofa.go.kr/cn-ko/brd/m_1276/list.do' },
+  { id: 'mofa-shanghai', name: '주상하이총영사관', mode: 'manual', kind: 'mofa', url: 'https://www.mofa.go.kr/cn-shanghai-ko/brd/m_27683/list.do' },
 ]);
 export const statusLabel = (status) => ({
   draft: '검토 대기', published: '게시 중', rejected: '게시 취소',

@@ -94,6 +94,10 @@ export const normalizeCandidate = (candidate, { collectedAt = new Date().toISOSt
       method: cleanText(candidate?.application?.method) || '원문 지원',
       url: normalizeSourceUrl(candidate?.application?.url) || sourceUrl,
     },
+    attachments: (Array.isArray(candidate?.attachments) ? candidate.attachments : []).slice(0, 10)
+      .filter(file => file && typeof file.name === 'string' && typeof file.url === 'string')
+      .map(file => ({ name: cleanText(file.name), url: normalizeSourceUrl(file.url) }))
+      .filter(file => /^https?:\/\//.test(file.url)),
     source: { name: sourceName, url: sourceUrl, externalId: externalId || null },
     status: JOB_STATUSES.DRAFT,
     radar: { collectedAt, fingerprint },
