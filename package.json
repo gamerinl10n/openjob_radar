@@ -1,6 +1,6 @@
 {
   "name": "openjob-radar",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Manual, review-first collector for public job postings",
   "type": "module",
   "license": "MIT",

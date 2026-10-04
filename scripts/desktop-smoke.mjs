@@ -24,7 +24,16 @@ try {
   await page.getByRole('textbox', { name: '담당 업무' }).fill('게임 한국어 번역');
   await page.getByRole('textbox', { name: '지원 자격' }).fill('한국어와 중국어 능통');
   await page.getByRole('button', { name: '수정 후 등록 검토로 저장' }).click();
-  await page.locator('#editor').waitFor({ state: 'hidden' });
+  await page.locator('#ready-count').filter({ hasText: '1' }).waitFor();
+  await page.getByRole('tab', { name: '등록 검토' }).click();
+  await page.getByRole('checkbox', { name: '[샘플] 한국어 번역가 선택' }).check();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '선택 제외', exact: true }).click();
+  await page.locator('#rejected-count').filter({ hasText: '1' }).waitFor();
+  await page.getByRole('tab', { name: '제외 기록' }).click();
+  await page.getByRole('checkbox', { name: '[샘플] 한국어 번역가 선택' }).check();
+  await page.getByRole('button', { name: '선택 제외 취소' }).click();
+  await page.locator('#rejected-count').filter({ hasText: '0' }).waitFor();
   await page.getByRole('tab', { name: '등록 검토' }).click();
   await page.getByRole('checkbox', { name: '[샘플] 한국어 번역가 선택' }).check();
   await page.getByRole('button', { name: '선택 승인' }).click();
@@ -33,6 +42,16 @@ try {
   await page.getByRole('heading', { name: '[샘플] 한국어 번역가' }).waitFor();
   const approved = JSON.parse(await readFile(join(root, 'data/approved.json'), 'utf8'));
   assert.equal(approved[0].company.name, '검증용 스튜디오');
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: '백업 다운로드' }).click();
+  const download = await downloadPromise;
+  const backupPath = join(root, 'exported-backup.json');
+  await download.saveAs(backupPath);
+  const backup = JSON.parse(await readFile(backupPath, 'utf8'));
+  assert.equal(backup.files['approved.json'].length, 1);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#restore-file').setInputFiles(backupPath);
+  await page.locator('#notice').filter({ hasText: '백업을 복원했습니다' }).waitFor();
   await page.screenshot({ path: 'dist/windows-desktop-smoke.png', fullPage: true });
-  console.log('Packaged Windows app: render → edit → approve → persisted history passed.');
+  console.log('Packaged Windows app: render → edit → reject → undo → approve → backup download → restore passed.');
 } finally { await application.close(); }
