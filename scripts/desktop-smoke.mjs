@@ -42,11 +42,22 @@ try {
   await page.getByRole('heading', { name: '[샘플] 한국어 번역가' }).waitFor();
   const approved = JSON.parse(await readFile(join(root, 'data/approved.json'), 'utf8'));
   assert.equal(approved[0].company.name, '검증용 스튜디오');
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: '백업 다운로드' }).click();
-  const download = await downloadPromise;
   const backupPath = join(root, 'exported-backup.json');
-  await download.saveAs(backupPath);
+  await application.evaluate(({ session }, path) => {
+    globalThis.backupDownload = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Native backup download timed out')), 30000);
+      session.defaultSession.once('will-download', (_event, item) => {
+        item.setSavePath(path);
+        item.once('done', (_event, state) => {
+          clearTimeout(timeout);
+          if (state === 'completed') resolve(state); else reject(new Error(`Download ${state}`));
+        });
+      });
+    });
+    globalThis.backupDownload.catch(() => {});
+  }, backupPath);
+  await page.getByRole('button', { name: '백업 다운로드' }).click();
+  await application.evaluate(() => globalThis.backupDownload);
   const backup = JSON.parse(await readFile(backupPath, 'utf8'));
   assert.equal(backup.files['approved.json'].length, 1);
   page.once('dialog', (dialog) => dialog.accept());
