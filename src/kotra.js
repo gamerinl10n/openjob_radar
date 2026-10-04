@@ -1,3 +1,4 @@
+import { normalizeCandidate } from './normalizeCandidate.js';
 import { createHash } from 'node:crypto';
 import { detailFields } from './publicJobDetail.js';
 import { workLocationDecision } from './workLocationPolicy.js';
@@ -163,26 +164,37 @@ export async function fetchKotraDetail(sourceUrl, fetchHtml) {
   return fetchHtml(KOTRA_DETAIL_URL, kotraBoardRequest(fields, { sequence }));
 }
 
-export async function collectKotra(source, { fetchHtml, knownUrls = [] }) {
+export async function collectKotra(source, { fetchHtml, knownUrls = [], maxPages = 1 }) {
   const result = {
     id: source.id, name: source.name, found: 0, candidates: [], warnings: [], exclusions: [], pending: [],
     stats: { pages: 0, read: 0, unrelated: 0, expired: 0, invalid: 0, skipped: 0,
       detailFailed: 0, attachmentPending: 0, pdfRead: 0 },
-    scope: 'KOTRA 공식 채용 게시판 최신 30건의 원문 확인',
+    scope: `KOTRA 공식 채용 게시판 최대 ${Math.min(maxPages, 5)}페이지 · 페이지당 30건`,
   };
   try {
     const fields = parseKotraBoardForm(await fetchHtml(source.url));
-    const listing = parseKotraListing(await fetchHtml(KOTRA_LIST_URL, kotraBoardRequest(fields)));
-    result.stats.pages = 1;
-    for (const key of ['read', 'unrelated', 'expired', 'invalid']) result.stats[key] += listing.stats[key];
-    result.exclusions.push(...listing.exclusions);
+    const listing = { items: [] }; const seen = new Set(); const pageSignatures = new Set();
+    for (let page = 1; page <= Math.min(maxPages, 5); page++) {
+      try {
+        const html = await fetchHtml(KOTRA_LIST_URL, kotraBoardRequest(fields, { page }));
+        const part = parseKotraListing(html);
+        const signature = JSON.stringify([...html.matchAll(/fnView\(\s*['"](\d+)['"]/g)].map(m => m[1]));
+        if (pageSignatures.has(signature)) { result.warnings.push('같은 목록이 반복되어 추가 페이지 조회를 중단했습니다.'); break; }
+        pageSignatures.add(signature);
+        result.stats.pages++;
+        for (const key of ['read', 'unrelated', 'expired', 'invalid']) result.stats[key] += part.stats[key];
+        result.exclusions.push(...part.exclusions.slice(0, 60 - result.exclusions.length));
+        for (const item of part.items) if (!seen.has(item.sourceUrl)) { seen.add(item.sourceUrl); listing.items.push(item); }
+        if (part.stats.read < 30) break;
+      } catch (error) { if (page === 1) throw error; result.warnings.push(`${page}페이지: ${error.message}`); break; }
+    }
     const known = new Set([...knownUrls].map(canonicalKotraUrl).filter(Boolean));
     const fresh = listing.items.filter((item) => {
       if (!known.has(item.sourceUrl)) return true;
       result.stats.skipped++;
       return false;
     });
-    const stopAt = Date.now() + 40000;
+    const stopAt = Date.now() + (maxPages > 1 ? 180000 : 40000);
     for (let offset = 0; offset < fresh.length; offset += 8) {
       if (Date.now() + 10000 > stopAt) {
         for (const item of fresh.slice(offset)) result.pending.push({
@@ -207,7 +219,7 @@ export async function collectKotra(source, { fetchHtml, knownUrls = [] }) {
         const { outcome, candidate, reason } = detail.value;
         if (outcome === 'ready') result.candidates.push(candidate);
         else if (outcome === 'pending') result.pending.push({
-          title: candidate.title, url: item.sourceUrl, postedAt: item.postedAt, reason, attachments: [],
+          draft: normalizeCandidate(candidate), title: candidate.title, url: item.sourceUrl, postedAt: item.postedAt, reason, attachments: [],
         });
         else {
           result.stats[candidate.deadline && candidate.deadline < todayKorea() ? 'expired' : 'unrelated']++;

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { reconcileCandidates, reviewReasons, mergePendingRecord } from './reviewInsights.js';
 import { updateSourceHealth } from './sourceHealth.js';
 import { parseArgs } from 'node:util';
 import { resolve, dirname } from 'node:path';
@@ -22,7 +23,7 @@ const defaults = {
 const help = `OpenJob Radar 공개 공고 수집기
 
 사용법:
-  openjob-radar collect [--source culture,kotra,worldjob] [--dry-run]
+  openjob-radar collect [--source culture,kotra,worldjob] [--depth standard|extended] [--dry-run]
   openjob-radar list
   openjob-radar approve --id <공고 ID>[,<공고 ID>]
   openjob-radar reject --id <공고 ID>[,<공고 ID>]
@@ -43,6 +44,7 @@ const args = parseArgs({
   allowPositionals: true,
   options: {
     source: { type: 'string' },
+    depth: { type: 'string', default: 'standard' },
     patch: { type: 'string' },
     id: { type: 'string' },
     review: { type: 'string' },
@@ -64,7 +66,6 @@ const paths = {
 };
 
 const emptyReview = () => ({ schemaVersion: 1, updatedAt: null, ready: [], needsReview: [] });
-const uniqueBy = (items, key) => [...new Map(items.filter(Boolean).map((item) => [key(item), item])).values()];
 const requestedIds = () => String(args.values.id || '').split(',').map((value) => value.trim()).filter(Boolean);
 const matchesId = (item, ids) => ids.includes(item?.id) || ids.includes(item?.radarId) || ids.includes(item?.slug);
 
@@ -74,36 +75,46 @@ async function collect() {
   const unknown = selected.filter((id) => !SOURCES.some((source) => source.id === id));
   if (unknown.length) throw new Error('지원하지 않는 출처입니다: ' + unknown.join(', '));
 
+  const depth = args.values.depth;
+  if (!['standard', 'extended'].includes(depth)) throw new Error('수집 범위는 standard 또는 extended입니다.');
   const now = new Date().toISOString();
   const review = await readJson(paths.review, emptyReview());
   const approved = await readJson(paths.approved, []);
   const state = await readJson(paths.state, { schemaVersion: 1, worldjob: { nextPage: 1 } });
   const rejected = await readJson(paths.rejected, []);
   const rejectedUrls = new Set(rejected.map(sourceUrlOf));
-  const knownItems = [...rejected, ...approved, ...(review.ready || [])];
+  const knownItems = rejected; // Revisit active and approved sources to detect amendments.
   const knownUrls = new Set(knownItems.map(sourceUrlOf).filter(Boolean));
   const worldjobKnown = new Set([...knownUrls].map(canonicalWorldjobUrl).filter(Boolean));
   const knownKotraUrls = [...knownUrls].map(canonicalKotraUrl).filter(Boolean);
 
   const { results } = await collectPublicJobCandidates(selected, {
     worldjobProgress: { page: state.worldjob?.nextPage || 1, known: worldjobKnown },
-    knownKotraUrls,
+    knownKotraUrls, depth,
   });
 
-  const existing = [...approved, ...(review.ready || [])];
-  const normalized = runRadarPipeline(results.flatMap((result) => result.candidates || []), existing, { collectedAt: now });
+  const normalized = runRadarPipeline(results.flatMap((result) => result.candidates || []), [], { collectedAt: now });
   const newReady = normalized
-    .filter(({ job, errors }) => !rejectedUrls.has(sourceUrlOf(job)) && !errors.length && job.status !== JOB_STATUSES.DUPLICATE)
-    .map(({ job }) => job);
+    .filter(({ job, errors }) => !rejectedUrls.has(sourceUrlOf(job)) && !errors.length)
+    .map(({ job }) => ({ ...job, status: JOB_STATUSES.DRAFT }));
   const invalid = normalized.filter(({ errors }) => errors.length);
-  const ready = uniqueBy([...(review.ready || []), ...newReady], sourceUrlOf);
+  const reconciled = reconcileCandidates(newReady, review.ready || [], approved, now);
+  const observations = new Map(results.flatMap(result => [...(result.exclusions || []), ...(result.pending || [])]).map(item => [item.url, item.reason]));
+  for (const job of [...reconciled.ready, ...reconciled.approved]) {
+    if (observations.has(sourceUrlOf(job))) job.radar = { ...job.radar, sourceNotice: observations.get(sourceUrlOf(job)), lastCheckedAt: now };
+    else if (newReady.some(fresh => sourceUrlOf(fresh) === sourceUrlOf(job))) delete job.radar.sourceNotice;
+  }
+  const ready = reconciled.ready;
 
   const pending = results.flatMap((result) => (result.pending || []).map((item) => ({
+    ...(item.draft || {}),
+    source: { ...(item.draft?.source || {}), name: item.draft?.source?.name || result.name, url: item.url },
     id: pendingId(item.url),
     sourceId: result.id,
     title: item.title,
     url: item.url,
     reason: item.reason,
+    reviewReasons: reviewReasons(item.reason),
     attachments: item.attachments || [],
     firstSeenAt: now,
     lastSeenAt: now,
@@ -112,21 +123,21 @@ async function collect() {
   for (const item of pending) {
     if (rejectedUrls.has(item.url)) continue;
     const previous = previousPending.get(item.url);
-    previousPending.set(item.url, previous ? { ...previous, ...item, firstSeenAt: previous.firstSeenAt || now } : item);
+    previousPending.set(item.url, previous ? mergePendingRecord(previous, item) : item);
   }
 
   const nextReview = {
     schemaVersion: 1,
     updatedAt: now,
     ready,
-    needsReview: [...previousPending.values()].filter((item) => !ready.some((job) => sourceUrlOf(job) === item.url)),
+    needsReview: [...previousPending.values()].filter((item) => ![...ready, ...approved].some((job) => sourceUrlOf(job) === item.url)),
   };
   const report = {
     schemaVersion: 1,
     ranAt: now,
-    selectedSources: selected,
-    results: results.map(({ id, name, found, stats, exclusions, warnings, error, emptyReason, progress }) => ({
-      id, name, found, stats, exclusions, warnings, error, emptyReason, progress,
+    selectedSources: selected, depth, duplicates: reconciled.duplicates, changed: reconciled.changed,
+    results: results.map(({ id, name, found, stats, exclusions, warnings, error, emptyReason, progress, scope }) => ({
+      id, name, found, stats, exclusions, warnings, error, emptyReason, progress, scope,
     })),
     invalidCandidates: invalid.map(({ job, errors }) => ({ id: job.id, title: job.title, errors })),
   };
@@ -143,7 +154,7 @@ async function collect() {
   if (!args.values['dry-run']) {
     const healthPath = resolve(dirname(paths.review), 'source-health.json');
     const health = updateSourceHealth(await readJson(healthPath, {}), results, now);
-    await commitTransaction(journal, [[paths.review, nextReview], [paths.lastRun, report], [paths.state, nextState], [healthPath, health]]);
+    await commitTransaction(journal, [[paths.review, nextReview], [paths.approved, reconciled.approved], [paths.lastRun, report], [paths.state, nextState], [healthPath, health]]);
   }
 
   for (const result of results) {
@@ -250,6 +261,7 @@ async function edit() {
     responsibilities: text('responsibilities').split('\n').filter(Boolean),
     requirements: text('requirements').split('\n').filter(Boolean),
   });
+  job.radar = { ...item.radar, ...job.radar, sourceSnapshot: item.radar?.sourceSnapshot, sourceChanges: [], changeBaseline: null };
   if (item.radarId) { job.id = item.id; job.radarId = item.radarId; job.slug = item.slug; }
   const errors = validateJob(job);
   if (errors.length) throw new Error('필수 정보 확인: ' + errors.join(', '));

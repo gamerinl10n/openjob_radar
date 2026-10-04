@@ -1,3 +1,4 @@
+import { normalizeCandidate } from './normalizeCandidate.js';
 import { workLocationDecision } from './workLocationPolicy.js';
 // Public WorldJob pages only; never evaluate the site's JavaScript links.
 const ORIGIN = 'https://www.worldjob.or.kr';
@@ -74,11 +75,12 @@ export function parseWorldjobDetail(html, sourceUrl) {
   needsAttachment:!duties.length || !requirements.length || !/^\d{4}-\d{2}-\d{2}$/.test(deadline),
  };
 }
-async function collectWorldjobPage(source, {fetchHtml, page=1, known=new Set()}) {
+async function collectWorldjobPage(source, {fetchHtml, page=1, known=new Set(), detailBudgetMs=35000}) {
  const result={id:source.id,name:source.name,found:0,candidates:[],warnings:[],exclusions:[],pending:[],
   stats:{pages:0,read:0,unrelated:0,expired:0,invalid:0,detailFailed:0,attachmentPending:0,pdfRead:0},scope:`${page}페이지 최대 30건 · 완료한 페이지 다음부터 이어서 조회`};
- const stopAt=Date.now()+35000;
- const pending=(job,reason)=>{result.pending.push({title:job.title,url:job.sourceUrl,reason,attachments:[]});result.stats.attachmentPending++;};
+ const stopAt=Date.now()+Math.min(detailBudgetMs,90000);
+ let incomplete = false;
+ const pending=(job,reason)=>{result.pending.push({draft:normalizeCandidate(job),title:job.title,url:job.sourceUrl,reason,attachments:[]});result.stats.attachmentPending++;};
  try {
   const listUrl=new URL(source.url);listUrl.searchParams.set('pageIndex',String(page));
   const html=await fetchHtml(listUrl.href);
@@ -92,20 +94,21 @@ async function collectWorldjobPage(source, {fetchHtml, page=1, known=new Set()})
   if(listed.length===30 && !pages.length)throw new Error('월드잡 페이지 이동 구조를 확인하지 못했습니다. 진행 위치를 유지합니다.');
   result.progress={page,nextPage:hasNext?page+1:1,processedUrls:[],cycleComplete:!hasNext};
   for(let i=0;i<jobs.length;i+=10) {
-   if(Date.now()+10000>stopAt){jobs.slice(i).forEach(j=>pending(j,'조회 시간이 부족합니다. 개별 재분석을 이용해 주세요.'));break;}
+   if(Date.now()+10000>stopAt){incomplete=true;jobs.slice(i).forEach(j=>pending(j,'조회 시간이 부족합니다. 다음 수집에서 이 페이지를 다시 확인합니다.'));break;}
    const results=await Promise.allSettled(jobs.slice(i,i+10).map(async j=>parseWorldjobDetail(await fetchHtml(j.sourceUrl),j.sourceUrl)));
    results.forEach((r,n)=>{
     const seed=jobs[i+n];
-    if(r.status==='rejected'){result.stats.detailFailed++;pending(seed,r.reason.message);return;}
+    if(r.status==='rejected'){incomplete=true;result.stats.detailFailed++;pending(seed,r.reason.message);return;}
     const {relevant,needsAttachment,...job}=r.value;
     const location=workLocationDecision(job,{structuredCountry:true});
     const expired=job.deadline && job.deadline<new Date(Date.now()+9*3600000).toISOString().slice(0,10);
     if(expired || location.state==='excluded'){result.stats[expired?'expired':'unrelated']++;result.exclusions.push({title:job.title,url:job.sourceUrl,reason:expired?'모집기간이 끝난 공고입니다.':location.reason});}
     else if(location.state==='pending')pending(job,location.reason);
-    else if(needsAttachment)pending(job,'업무·자격·마감일 중 확인이 필요한 정보가 있습니다.');
+    else if(needsAttachment)pending(job,[!job.responsibilities.length && '담당 업무 확인',!job.requirements.length && '지원 자격 확인',!job.deadline && '마감일 확인'].filter(Boolean).join(' · ') || '업무·자격·마감일 형식 확인');
     else result.candidates.push(job);
    });
   }
+  if(incomplete){result.progress.nextPage=page;result.progress.cycleComplete=false;result.warnings.push('상세 조회가 끝나지 않아 이어보기 위치를 유지했습니다.');}
   result.progress.processedUrls=[...result.candidates.map(j=>j.sourceUrl),...result.exclusions.map(j=>j.url)];
   result.found=result.candidates.length;
   if(!result.found)result.emptyReason=result.pending.length?'확인이 필요한 공고가 대기함에 있습니다.':'조회 범위에 조건에 맞는 진행 중 공고가 없습니다.';
@@ -116,6 +119,26 @@ async function collectWorldjobPage(source, {fetchHtml, page=1, known=new Set()})
 // Check new notices every time, while backfilling one older page per run.
 export async function collectWorldjob(source, options) {
  const page=options.page || 1;
+ if (options.maxPages > 1) {
+  const parts = []; const visited = new Set(); let current = 1;
+  for (let i = 0; i < Math.min(options.maxPages, 5); i++) {
+   if (visited.has(current)) break;
+   visited.add(current);
+   const part = await collectWorldjobPage(source, { ...options, page: current, detailBudgetMs: 90000 });
+   parts.push(part);
+   if (part.error || !part.progress) break;
+   const next = i === 0 && page > 1 ? page : part.progress.nextPage;
+   if (next === 1) break;
+   current = next;
+  }
+  const last = parts.at(-1); const unique = (key) => [...new Map(parts.flatMap(p => p[key]).map(j => [j.sourceUrl || j.url, j])).values()];
+  const result = { ...last, candidates: unique('candidates'), pending: unique('pending'), exclusions: unique('exclusions'),
+   warnings: parts.flatMap(p => p.warnings), scope: `확장 수집 · 최신 및 이어보기 최대 5페이지 · 페이지당 30건`,
+   stats: parts.reduce((sum, p) => { for (const [key, value] of Object.entries(p.stats)) sum[key] = (sum[key] || 0) + value; return sum; }, {}) };
+  if (last.error && parts.length > 1) { result.warnings.push(last.error); result.error = undefined; result.progress = { nextPage: current, cycleComplete: false }; }
+  result.found = result.candidates.length;
+  return result;
+ }
  if(page===1)return collectWorldjobPage(source,options);
  const [fresh,older]=await Promise.all([collectWorldjobPage(source,{...options,page:1}),collectWorldjobPage(source,options)]);
  const unique=(items,key)=>[...new Map(items.map(item=>[item[key],item])).values()];

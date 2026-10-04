@@ -1,3 +1,4 @@
+import { reviewReasons } from './reviewInsights.js';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -66,7 +67,7 @@ export const readRadarStatus = async (workspaceRoot) => {
   ]);
 
   return {
-    review,
+    review: { ...review, needsReview: review.needsReview.map(item => ({ ...item, reviewReasons: reviewReasons(item.reason) })) },
     approved, rejected,
     approvedCount: approved.length,
     rejectedCount: rejected.length,
@@ -147,6 +148,10 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
             : [];
           if (!sources.length) throw new Error('수집할 출처를 하나 이상 선택하세요.');
           args = ['collect', '--source', sources.join(',')];
+          if (body.depth !== undefined) {
+            if (!['standard', 'extended'].includes(body.depth)) throw new Error('지원하지 않는 수집 범위입니다.');
+            args.push('--depth', body.depth);
+          }
           if (body.dryRun === true) args.push('--dry-run');
           label = '공고 수집';
         } else if (url.pathname === '/api/edit') {

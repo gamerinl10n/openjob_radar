@@ -16,7 +16,10 @@ const application = await electron.launch({
 try {
   const page = await application.firstWindow();
   await page.locator('#review-count').filter({ hasText: '1' }).waitFor();
+  await page.selectOption('#collection-depth', 'extended');
   await page.getByRole('tab', { name: '확인 필요' }).click();
+  await page.selectOption('#reason-filter', 'qualifications');
+  await page.locator('.insight-badges').filter({ hasText: '지원 자격 확인' }).waitFor();
   await page.getByRole('button', { name: '상세 · 수정' }).click();
   await page.getByRole('textbox', { name: '회사 · 기관' }).fill('검증용 스튜디오');
   await page.getByRole('textbox', { name: '국가', exact: true }).fill('중국');
@@ -39,6 +42,12 @@ try {
   await page.getByRole('button', { name: '선택 승인' }).click();
   await page.locator('#approved-count').filter({ hasText: '1' }).waitFor();
   await page.getByRole('tab', { name: '승인 기록' }).click();
+  await page.fill('#interest-keywords', '한국어');
+  await page.check('#interest-only');
+  await page.selectOption('#sort-order', 'deadline');
+  await page.reload();
+  assert.equal(await page.locator('#collection-depth').inputValue(), 'extended');
+  assert.equal(await page.locator('#interest-keywords').inputValue(), '한국어');
   await page.getByRole('heading', { name: '[샘플] 한국어 번역가' }).waitFor();
   const approved = JSON.parse(await readFile(join(root, 'data/approved.json'), 'utf8'));
   assert.equal(approved[0].company.name, '검증용 스튜디오');

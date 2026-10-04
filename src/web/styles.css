@@ -122,3 +122,15 @@ summary { cursor: pointer; color: var(--muted); }
 .review-layout:has(.detail-panel:not([hidden])) .tab { margin-right: 8px; font-size: 13px; }
 @media(max-width:1000px) { .review-layout:has(.detail-panel:not([hidden])) { grid-template-columns: 1fr; }.detail-panel { position: static; max-height: none; }.backup-panel { align-items: flex-start; flex-direction: column; } }
 @media(max-width:600px) { .health-grid { grid-template-columns: 1fr; }.backup-actions { flex-wrap: wrap; } }
+
+.depth-label { display: flex; align-items: center; gap: 8px; color: var(--muted, #aaa6bc); flex-wrap: wrap; }
+.insight-filters, .interest-controls { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+.insight-filters select { flex: 1; min-width: 140px; }
+.interest-controls > input { flex: 1; min-width: 180px; }
+.interest-controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.insight-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.insight-badges span { padding: 4px 8px; border: 1px solid #524362; border-radius: 6px; color: #d9c4eb; font-size: 12px; }
+.change-notice { color: #d3bbff; font-size: 13px; }
+.editor-insights { overflow-wrap: anywhere; font-size: 13px; }
+.editor-insights details { padding: 10px; background: #211c32; border-radius: 8px; margin: 8px 0; }
+.editor-insights a { color: #c5b2f3; }
