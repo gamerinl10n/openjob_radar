@@ -77,3 +77,15 @@ test('failed reanalysis preserves previously parsed fields and original first-se
   assert.equal(merged.firstSeenAt, '2026-01-01');
   assert.equal(merged.reason, '본문 조회 실패');
 });
+
+test('worldjob retains its cursor when a detail fails instead of skipping unprocessed pages', async () => {
+  const source={id:'worldjob',name:'월드잡',url:'https://www.worldjob.or.kr/advnc/cnttNewList.do'};
+  const result=await collectWorldjob(source,{maxPages:5,fetchHtml:async url=>{
+    if(!url.includes('pageIndex='))throw Error('timeout');
+    return `<div class="posting-list-wrap"><div class="post-box"><h5><a href="javascript:goView1('E20260904004','1','1','1');">채용</a></h5></div><a href="javascript:goList('1',2)">2</a></div>`;
+  }});
+  assert.equal(result.progress.nextPage,1);
+  assert.equal(result.stats.pages,1);
+  assert.equal(result.pending.length,1);
+  assert.equal(result.progress.cycleComplete,false);
+});
