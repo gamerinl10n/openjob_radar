@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeCandidate } from '../src/normalizeCandidate.js';
-import { reconcileCandidates, reviewReasons } from '../src/reviewInsights.js';
+import { reconcileCandidates, reviewReasons, mergePendingRecord } from '../src/reviewInsights.js';
 import { nextListingPages } from '../src/publicJobSources.js';
 import { collectWorldjob } from '../src/worldjob.js';
 import { collectKotra, KOTRA_LIST_URL } from '../src/kotra.js';
@@ -67,4 +67,13 @@ test('KOTRA stops repeated pages without duplicating stats or detail requests', 
   assert.equal(lists, 2);
   assert.equal(result.stats.read, 30);
   assert.match(result.warnings.join(' '), /반복/);
+});
+
+test('failed reanalysis preserves previously parsed fields and original first-seen date', () => {
+  const merged = mergePendingRecord({company:{name:'확인된 회사'}, location:{country:'중국',city:'상하이'}, requirements:['중국어'], firstSeenAt:'2026-01-01'}, {company:{name:''}, location:{country:'',city:''}, requirements:[], reason:'본문 조회 실패', firstSeenAt:'2026-02-01'});
+  assert.equal(merged.company.name, '확인된 회사');
+  assert.equal(merged.location.city, '상하이');
+  assert.deepEqual(merged.requirements, ['중국어']);
+  assert.equal(merged.firstSeenAt, '2026-01-01');
+  assert.equal(merged.reason, '본문 조회 실패');
 });

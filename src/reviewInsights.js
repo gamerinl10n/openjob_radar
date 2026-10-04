@@ -17,7 +17,7 @@ export const sourceSnapshot = (job) => Object.fromEntries(fields.map((key) => [k
 export const changedFields = (before, after) => fields.filter((key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null))
   .map((field) => ({ field, before: before[field] ?? null, after: after[field] ?? null }));
 const url = (job) => normalizeSourceUrl(job.source?.url || job.sourceUrl || job.url);
-const sameContent = (a, b) => Boolean(a.company?.name && b.company?.name && a.title && b.title)
+const sameContent = (a, b) => Boolean(a.company?.name && b.company?.name && a.title && b.title && a.deadline && b.deadline && a.location?.country && b.location?.country)
   && createCandidateFingerprint(a) === createCandidateFingerprint(b)
   && (a.location?.country || '') === (b.location?.country || '') && a.deadline === b.deadline;
 
@@ -50,4 +50,18 @@ export function reconcileCandidates(candidates, ready = [], approved = [], now =
     old.radar.lastCheckedAt = now;
   }
   return { ready: [...records.slice(0, ready.length), ...added], approved: records.slice(ready.length), duplicates, changed };
+}
+
+// A transient parse failure must not erase useful fields from an earlier attempt.
+export function mergePendingRecord(previous, next) {
+  const merged = { ...previous, ...next, firstSeenAt: previous.firstSeenAt || next.firstSeenAt };
+  for (const key of ['company', 'location', 'summary', 'responsibilities', 'requirements', 'preferred', 'languages', 'deadline', 'employmentType', 'educationLevel', 'experienceLevel']) {
+    const value = next[key];
+    if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) {
+      if (previous[key] !== undefined) merged[key] = previous[key];
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      merged[key] = { ...previous[key], ...Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== '' && entry !== null)) };
+    }
+  }
+  return merged;
 }

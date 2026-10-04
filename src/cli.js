@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { reconcileCandidates, reviewReasons } from './reviewInsights.js';
+import { reconcileCandidates, reviewReasons, mergePendingRecord } from './reviewInsights.js';
 import { updateSourceHealth } from './sourceHealth.js';
 import { parseArgs } from 'node:util';
 import { resolve, dirname } from 'node:path';
@@ -66,7 +66,6 @@ const paths = {
 };
 
 const emptyReview = () => ({ schemaVersion: 1, updatedAt: null, ready: [], needsReview: [] });
-const uniqueBy = (items, key) => [...new Map(items.filter(Boolean).map((item) => [key(item), item])).values()];
 const requestedIds = () => String(args.values.id || '').split(',').map((value) => value.trim()).filter(Boolean);
 const matchesId = (item, ids) => ids.includes(item?.id) || ids.includes(item?.radarId) || ids.includes(item?.slug);
 
@@ -124,7 +123,7 @@ async function collect() {
   for (const item of pending) {
     if (rejectedUrls.has(item.url)) continue;
     const previous = previousPending.get(item.url);
-    previousPending.set(item.url, previous ? { ...previous, ...item, firstSeenAt: previous.firstSeenAt || now } : item);
+    previousPending.set(item.url, previous ? mergePendingRecord(previous, item) : item);
   }
 
   const nextReview = {
