@@ -1,3 +1,4 @@
+import { normalizeCandidate } from '../src/normalizeCandidate.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { COLLECTION_SOURCES } from '../src/sources.js';
@@ -83,4 +84,10 @@ test('title date ranges use the explicit end date without guessing a partial-yea
   assert.equal(full.items[0].deadline,'2099-12-31');
   const partial=parseMofaListing(table(row(12,'주중국대사관 채용공고 (2020.1.1 ~ 12.31까지)')),source);
   assert.equal(partial.items[0].deadline,'');assert.equal(partial.stats.expired,0);
+});
+
+test('normalization preserves official attachment links for editing and approval', () => {
+  const normalized=normalizeCandidate({...seed,attachments:[{name:'공고.hwp',url:url.replace('view.do','down.do')},{name:'unsafe',url:'javascript:alert(1)'}]});
+  assert.equal(normalized.attachments.length,1);assert.equal(normalized.attachments[0].name,'공고.hwp');
+  assert.deepEqual(normalizeCandidate(normalized).attachments,normalized.attachments);
 });

@@ -26,6 +26,7 @@ export function validateBackup(backup) {
   if (files['rejected.json'].some((item) => !['ready','needsReview'].includes(item.queue))) throw new Error('제외 기록의 원래 목록 정보가 없습니다.');
   for (const item of [...review.ready, ...review.needsReview, ...files['approved.json'], ...files['rejected.json']]) {
     if (item.source !== undefined && (!object(item.source) || (item.source.name !== undefined && typeof item.source.name !== 'string'))) throw new Error('공고 출처 정보가 올바르지 않습니다.');
+    if (item.attachments !== undefined && (!Array.isArray(item.attachments) || item.attachments.some(file => !object(file) || typeof file.name !== 'string' || typeof file.url !== 'string'))) throw new Error('첨부파일 정보 형식이 올바르지 않습니다.');
     for (const key of ['responsibilities', 'requirements']) if (item[key] !== undefined && (!Array.isArray(item[key]) || item[key].some((v) => typeof v !== 'string'))) throw new Error('공고 세부 내용 형식이 올바르지 않습니다.');
   }
   const state = files['state.json'];

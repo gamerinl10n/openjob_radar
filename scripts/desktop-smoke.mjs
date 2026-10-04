@@ -56,6 +56,7 @@ try {
   await page.getByRole('heading', { name: '[샘플] 한국어 번역가' }).waitFor();
   const approved = JSON.parse(await readFile(join(root, 'data/approved.json'), 'utf8'));
   assert.equal(approved[0].company.name, '검증용 스튜디오');
+  assert.equal(approved[0].attachments[0].name, '검증용.hwp');
   const backupPath = join(root, 'exported-backup.json');
   await application.evaluate(({ session }, path) => {
     globalThis.backupDownload = new Promise((resolve, reject) => {
