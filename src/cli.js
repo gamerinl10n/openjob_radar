@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { updateSourceHealth } from './sourceHealth.js';
 import { parseArgs } from 'node:util';
 import { resolve, dirname } from 'node:path';
 
@@ -25,6 +26,7 @@ const help = `OpenJob Radar 공개 공고 수집기
   openjob-radar list
   openjob-radar approve --id <공고 ID>[,<공고 ID>]
   openjob-radar reject --id <공고 ID>[,<공고 ID>]
+  openjob-radar unreject --id <공고 ID>[,<공고 ID>]
 
 기본 파일:
   data/review.json   수집 후 사람이 검토할 공고
@@ -78,7 +80,7 @@ async function collect() {
   const state = await readJson(paths.state, { schemaVersion: 1, worldjob: { nextPage: 1 } });
   const rejected = await readJson(paths.rejected, []);
   const rejectedUrls = new Set(rejected.map(sourceUrlOf));
-  const knownItems = [...rejected, ...approved, ...(review.ready || []), ...(review.needsReview || [])];
+  const knownItems = [...rejected, ...approved, ...(review.ready || [])];
   const knownUrls = new Set(knownItems.map(sourceUrlOf).filter(Boolean));
   const worldjobKnown = new Set([...knownUrls].map(canonicalWorldjobUrl).filter(Boolean));
   const knownKotraUrls = [...knownUrls].map(canonicalKotraUrl).filter(Boolean);
@@ -139,7 +141,9 @@ async function collect() {
   };
 
   if (!args.values['dry-run']) {
-    await commitTransaction(journal, [[paths.review, nextReview], [paths.lastRun, report], [paths.state, nextState]]);
+    const healthPath = resolve(dirname(paths.review), 'source-health.json');
+    const health = updateSourceHealth(await readJson(healthPath, {}), results, now);
+    await commitTransaction(journal, [[paths.review, nextReview], [paths.lastRun, report], [paths.state, nextState], [healthPath, health]]);
   }
 
   for (const result of results) {
@@ -198,6 +202,27 @@ async function reject() {
   console.log(`${selected.length}건을 공개 제외 기록으로 이동했습니다.`);
 }
 
+async function unreject() {
+  const ids = [...new Set(requestedIds())];
+  if (!ids.length) throw new Error('제외를 취소할 공고를 선택하세요.');
+  const review = await readJson(paths.review, emptyReview());
+  const rejected = await readJson(paths.rejected, []);
+  const approved = await readJson(paths.approved, []);
+  const selected = rejected.filter((item) => matchesId(item, ids));
+  if (new Set(selected.map((item) => item.id)).size !== ids.length) throw new Error('제외 기록에서 공고를 찾지 못했습니다.');
+  const known = [...approved, ...review.ready, ...review.needsReview];
+  for (const item of selected) {
+    if (known.some((old) => old.id === item.id || sourceUrlOf(old) === sourceUrlOf(item))) throw new Error('이미 다른 목록에 같은 공고가 있습니다.');
+    const { queue, rejectedAt, ...job } = item;
+    if (!['ready', 'needsReview'].includes(queue)) throw new Error('원래 목록을 확인할 수 없습니다.');
+    review[queue].push(job);
+    known.push(job);
+  }
+  review.updatedAt = new Date().toISOString();
+  await commitTransaction(journal, [[paths.review, review], [paths.rejected, rejected.filter((item) => !matchesId(item, ids))]]);
+  console.log(`${selected.length}건의 제외를 취소했습니다. 원래 검토 목록으로 돌아갔습니다.`);
+}
+
 async function list() {
   const review = await readJson(paths.review, emptyReview());
   console.log(`등록 검토 ${review.ready.length}건 · 확인 필요 ${review.needsReview.length}건`);
@@ -239,7 +264,7 @@ const journal = resolve(dirname(paths.review), 'transaction.json');
 let release;
 
 try {
-  if (['collect', 'approve', 'reject', 'edit', 'list'].includes(command)) {
+  if (['collect', 'approve', 'reject', 'edit', 'unreject', 'list'].includes(command)) {
     release = await acquireLock(resolve(dirname(paths.review), '.operation.lock'));
     await recoverTransaction(journal);
   }
@@ -247,6 +272,7 @@ try {
   else if (command === 'collect') await collect();
   else if (command === 'edit') await edit();
   else if (command === 'approve') await approve();
+  else if (command === 'unreject') await unreject();
   else if (command === 'reject') await reject();
   else if (command === 'list') await list();
   else throw new Error('알 수 없는 명령입니다: ' + command);

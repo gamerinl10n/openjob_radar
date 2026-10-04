@@ -102,3 +102,23 @@ summary { cursor: pointer; color: var(--muted); }
 .tab { white-space: nowrap; }
 @media(max-width:600px) { .edit-grid { grid-template-columns: 1fr; } .filters, .editor-actions { flex-direction: column; } }
 @media(prefers-reduced-motion:reduce) { *, *::before, *::after { transition: none !important; } }
+
+[hidden] { display: none !important; }
+.health-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 22px; }
+.health-card { border-top: 1px solid var(--line); padding-top: 14px; min-width: 0; }
+.health-card strong { font-size: 13px; }.health-card p { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 8px 0 0; overflow-wrap: anywhere; }
+.health-state { font-size: 11px; margin-left: 8px; padding: 3px 7px; border-radius: 6px; background: var(--surface-2); color: var(--muted); }
+.health-state.success { color: #9be3ca; }.health-state.failed { color: #ffaaa3; }.health-state.partial { color: #e9c991; }
+.operation-status { border-left: 3px solid var(--lime); padding: 10px 14px; color: var(--lime); font-size: 13px; }
+.review-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 24px; }
+.review-layout:has(.detail-panel:not([hidden])) { grid-template-columns: minmax(300px, .9fr) minmax(350px,1.1fr); }
+.review-list { min-width: 0; }.detail-panel { min-width: 0; margin-top: 24px; border: 1px solid var(--line); border-radius: 16px; background: #14192a; padding: 20px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; align-self: start; }
+.detail-panel h2 { font-size: 20px; }.detail-panel .subtitle { font-size: 12px; line-height: 1.8; }.detail-panel .section-heading { gap: 12px; }
+.detail-panel .edit-grid { grid-template-columns: 1fr; }.detail-panel .editor-actions { flex-wrap: wrap; }
+.detail-navigation { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; gap: 8px; font-size: 12px; color: var(--muted); }.detail-navigation button { padding: 8px 12px; }
+.job-card.active { border-color: var(--lime); box-shadow: inset 3px 0 var(--lime); }
+.backup-panel { display: flex; justify-content: space-between; align-items: center; gap: 24px; }.backup-actions { display: flex; gap: 10px; }
+.review-layout:has(.detail-panel:not([hidden])) .job-card { grid-template-columns: auto minmax(0,1fr); }.review-layout:has(.detail-panel:not([hidden])) .source-link { grid-column: 2; }
+.review-layout:has(.detail-panel:not([hidden])) .tab { margin-right: 8px; font-size: 13px; }
+@media(max-width:1000px) { .review-layout:has(.detail-panel:not([hidden])) { grid-template-columns: 1fr; }.detail-panel { position: static; max-height: none; }.backup-panel { align-items: flex-start; flex-direction: column; } }
+@media(max-width:600px) { .health-grid { grid-template-columns: 1fr; }.backup-actions { flex-wrap: wrap; } }

@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import { exportBackup, restoreBackup } from './backup.js';
 import { readJson } from './storage.js';
 
 const execFileAsync = promisify(execFile);
@@ -30,11 +31,11 @@ const json = (response, status, value) => {
   response.end(JSON.stringify(value));
 };
 
-const bodyOf = async (request) => {
+const bodyOf = async (request, limit = 16_384) => {
   let body = '';
   for await (const chunk of request) {
     body += chunk;
-    if (body.length > 16_384) throw new Error('요청이 너무 큽니다.');
+    if (Buffer.byteLength(body) > limit) throw new Error('요청이 너무 큽니다.');
   }
   return body ? JSON.parse(body) : {};
 };
@@ -56,11 +57,12 @@ const sameOrigin = (request) => {
 
 export const readRadarStatus = async (workspaceRoot) => {
   const dataRoot = resolve(workspaceRoot, 'data');
-  const [review, approved, rejected, lastRun] = await Promise.all([
+  const [review, approved, rejected, lastRun, sourceHealth] = await Promise.all([
     readJson(resolve(dataRoot, 'review.json'), emptyReview()),
     readJson(resolve(dataRoot, 'approved.json'), []),
     readJson(resolve(dataRoot, 'rejected.json'), []),
     readJson(resolve(dataRoot, 'last-run.json'), null),
+    readJson(resolve(dataRoot, 'source-health.json'), {}),
   ]);
 
   return {
@@ -68,7 +70,7 @@ export const readRadarStatus = async (workspaceRoot) => {
     approved, rejected,
     approvedCount: approved.length,
     rejectedCount: rejected.length,
-    lastRun,
+    lastRun, sourceHealth,
   };
 };
 
@@ -98,6 +100,17 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
         return;
       }
 
+      if (request.method === 'GET' && url.pathname === '/api/backup') {
+        if (operation) { json(response, 409, { error: '작업이 끝난 뒤 백업해 주세요.' }); return; }
+        operation = { label: '백업', startedAt: new Date().toISOString() };
+        try {
+          const backup = await exportBackup(root);
+          response.setHeader('Content-Disposition', 'attachment; filename="OpenJob-Radar-backup.json"');
+          json(response, 200, backup);
+        } finally { operation = null; }
+        return;
+      }
+
       if (request.method === 'POST' && url.pathname.startsWith('/api/')) {
         if (!sameOrigin(request)) {
           json(response, 403, { error: '다른 사이트에서 보낸 요청은 허용하지 않습니다.' });
@@ -108,11 +121,27 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
           return;
         }
 
-        const body = await bodyOf(request);
+        const body = await bodyOf(request, url.pathname === '/api/restore' ? 10 * 1024 * 1024 : 16_384);
         if (operation) { json(response, 409, { error: '다른 작업이 실행 중입니다.' }); return; }
+        if (url.pathname === '/api/restore') {
+          operation = { label: '복원', startedAt: new Date().toISOString() };
+          try {
+            const restored = await restoreBackup(root, body);
+            json(response, 200, { ok: true, output: { stdout: '백업을 복원했습니다. 복원 직전 데이터도 backups 폴더에 보관했습니다.' }, status: await readRadarStatus(root), ...restored });
+          } finally { operation = null; }
+          return;
+        }
         let args;
         let label;
-        if (url.pathname === '/api/collect') {
+        if (url.pathname === '/api/retry') {
+          const health = (await readRadarStatus(root)).sourceHealth;
+          const sources = [...sourceIds].filter((id) => health[id]?.state === 'failed');
+          if (!sources.length) throw new Error('재시도할 실패 출처가 없습니다.');
+          args = ['collect', '--source', sources.join(',')];
+          label = '실패 출처 재수집';
+        } else if (url.pathname === '/api/unreject') {
+          args = ['unreject', '--id', idsOf(body.ids).join(',')]; label = '제외 취소';
+        } else if (url.pathname === '/api/collect') {
           const sources = Array.isArray(body.sources)
             ? [...new Set(body.sources.map(String).filter((id) => sourceIds.has(id)))]
             : [];
@@ -134,6 +163,7 @@ export const createRadarServer = ({ workspaceRoot = process.cwd(), runner = runC
           return;
         }
 
+        if (operation) { json(response, 409, { error: '다른 작업이 실행 중입니다.' }); return; }
         operation = { label, startedAt: new Date().toISOString() };
         try {
           const output = await runner(root, args);
