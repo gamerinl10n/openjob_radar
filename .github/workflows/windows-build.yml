@@ -7,9 +7,13 @@ on:
     branches: [master]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,3 +31,7 @@ jobs:
             dist/*Setup.exe
             dist/windows-desktop-smoke.png
           if-no-files-found: error
+          # Installers and PNGs are already compressed.
+          compression-level: 0
+          # Keep published-branch installers available; PR builds are temporary.
+          retention-days: ${{ github.event_name == 'pull_request' && 7 || 90 }}
